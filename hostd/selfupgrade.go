@@ -28,6 +28,18 @@ func (s *Server) UpgradeSelf(ctx context.Context, tag, proxy string) error {
 	if !ValidVersionTag(tag) {
 		return fmt.Errorf("版本号格式非法: %q", tag)
 	}
+	// v0.4.68 安全修复：拒绝降级。
+	//
+	// 旧实现只校验 tag 形态，不看它相对当前版本是高是低。于是一个只有
+	// pojun 组权限的进程（主服务被注入后即是）可以把 root 助手换装到任意
+	// 历史版本——包括存在已知漏洞的版本——从而把「可装什么版本」变成
+	// 「可以回到任意不安全的过去」。主程序的更新接口本来就做了 cmp>=0
+	// 检查，助手这侧必须一致。
+	if s.Version != "" && tag != "" {
+		if cmp, ok := selfupdate.CompareVersions(tag, s.Version); ok && cmp < 0 {
+			return fmt.Errorf("拒绝降级：目标 %s 低于当前 %s（如需回滚，请手动重装）", tag, s.Version)
+		}
+	}
 	if s.SelfPath == "" {
 		return fmt.Errorf("未知自身路径，无法换装")
 	}

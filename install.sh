@@ -196,6 +196,21 @@ fi
 # 验证不过时可以选择重填或跳过（跳过=直连，后面该失败的会失败）。
 normalize_proxy(){
   local p="$1"
+  # 清洗顺序很关键：先干掉 CR/LF，再删空格与引号。
+  #
+  # v0.4.68 安全修复：旧版只 tr -d ' \t"'"'"'，**不过滤换行**。而这个值是直接
+  # printf 进 systemd unit 的 Environment= 行的（见 write_systemd_unit），
+  # 于是 `--install-proxy='http://h:7897\nEnvironment=LD_PRELOAD=/tmp/x.so'`
+  # 能通过「协议前缀 + host:port」两道校验，在 root 拥有的 unit 里生成第二行
+  # 指令 —— 以 pojun 用户身份执行任意代码（干净安装机上的首次提权）。
+  #
+  # tr -d '\r\n' 之后整条串退化成一行，换行注入即失效；协议与 host:port 校验
+  # 依旧保证它是个合法代理 URL。
+  p="$(printf '%s' "$p" | tr -d '\r\n')"
+  # 再拒一次剩余的其它控制字符（\v \f \0 等）——它们不该出现在 URL 里。
+  case "$p" in
+    *[[:cntrl:]]*) return 1 ;;
+  esac
   p="$(printf '%s' "$p" | tr -d ' \t"'"'"'' | sed 's|/*$||')"
   [ -z "$p" ] && return 0
   # 裸 host:port → 默认按 http 处理（绝大多数本地代理是 http 混合端口）
@@ -275,7 +290,13 @@ verify_proxy(){
 # 显式给了 --install-proxy 也走同一套校验：填错协议/端口是最常见的失败原因。
 configure_proxy(){
   if [ -n "$INSTALL_PROXY" ]; then
-    INSTALL_PROXY="$(normalize_proxy "$INSTALL_PROXY")"
+    # 注意：normalize_proxy 会拒绝控制字符并返回非 0，必须显式接住——
+    # 直接赋值会把失败状态吞掉，让带换行的串进到下面的校验里。
+    local _np
+    if ! _np="$(normalize_proxy "$INSTALL_PROXY")"; then
+      die "代理含非法控制字符（换行/回车等）：拒绝安装"
+    fi
+    INSTALL_PROXY="$_np"
     if ! proxy_scheme_ok "$INSTALL_PROXY"; then
       die "代理协议不支持: $INSTALL_PROXY（支持 http/https/socks5/socks5h）"
     fi
@@ -297,10 +318,15 @@ configure_proxy(){
   printf '代理地址（留空直连）: '
   local ans=""
   read -r ans </dev/tty || ans=""
-  ans="$(printf '%s' "$ans" | tr -d ' \t"'"'"'')"
+  ans="$(printf '%s' "$ans" | tr -d ' \t"'"'"'")"
   [ -z "$ans" ] && { info "使用直连"; return 0; }
 
-  ans="$(normalize_proxy "$ans")"
+  local _np2
+  if ! _np2="$(normalize_proxy "$ans")"; then
+    warn "代理含非法控制字符（换行/回车等），已忽略，改用直连"
+    return 0
+  fi
+  ans="$_np2"
   if ! proxy_scheme_ok "$ans"; then
     warn "协议不支持: $ans"
     warn "支持 http/https/socks5/socks5h"
@@ -1372,6 +1398,13 @@ for _n in $(seq 1 30); do
     # set -e 当场杀掉脚本——曾让 macOS 安装在 health 200 后静默退出
     HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
     ok "服务已就绪 → http://${HOST_IP:-127.0.0.1}:${PORT}（首次访问设置管理员密码）"
+    # 未初始化窗口告警（v0.4.68）：绑定非环回 + 密码未设置时，任何能连上这个
+    # 端口的人都可以抢先成为管理员。装机输出必须把这一点说到脸上，而不是等
+    # 用户自己去发现。
+    case "$LISTEN_ADDR" in
+      :*|0.0.0.0:*|"[::]"*|*:0.0.0.0*)
+        warn "当前监听 ${LISTEN_ADDR}（全网可达）。管理员密码尚未设置前，任何能访问该端口的人都能抢先注册成为管理员——请立即完成第 ① 步，或先用防火墙限制来源 IP。" ;;
+    esac
     info "下一步：①设置管理员密码 ②「LLM 配置」配通道 ③「系统→MCP」用预设接入 FOFA/Playwright ④建任务可套用内置 Playbook"
     if [ "$MODE" = "binary" ]; then
       if [ "$IS_MAC" = "1" ]; then

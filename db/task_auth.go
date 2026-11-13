@@ -1,11 +1,16 @@
 package db
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 // TaskAuthConfig 是任务的「目标登录凭据」配置（v0.4.8，借鉴 Shannon 的
@@ -22,6 +27,7 @@ type TaskAuthConfig struct {
 	ContentType     string            `json:"content_type"` // json|form
 	UsernameField   string            `json:"username_field,omitempty"`
 	PasswordField   string            `json:"password_field,omitempty"`
+	TOTPField       string            `json:"totp_field,omitempty"` // 动态码表单字段名（默认 totp）
 	Username        string            `json:"username,omitempty"`
 	Password        string            `json:"-"`
 	HasPassword     bool              `json:"has_password,omitempty"`
@@ -31,6 +37,34 @@ type TaskAuthConfig struct {
 	Headers         map[string]string `json:"headers,omitempty"`
 	SuccessStatus   int               `json:"success_status,omitempty"`   // 0=不校验状态码
 	SuccessContains string            `json:"success_contains,omitempty"` // 响应体包含即视为成功
+}
+
+// TOTPCodeNow 按当前时间生成 6 位动态码（RFC 6238，30 秒步长，HMAC-SHA1）。
+//
+// v0.4.68：TOTP 密钥不再以明文写进 system prompt。session_login(use_task_auth=true)
+// 在**发请求的那一刻**现算动态码，密钥始终留在服务端内存里。
+func (a *TaskAuthConfig) TOTPCodeNow() (string, error) {
+	secret := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(a.TOTPSecret), " ", ""))
+	if secret == "" {
+		return "", fmt.Errorf("未配置 TOTP 密钥")
+	}
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
+	if err != nil {
+		// 兼容带 "=" 填充的写法
+		key, err = base32.StdEncoding.DecodeString(secret)
+		if err != nil {
+			return "", fmt.Errorf("TOTP 密钥不是合法 Base32: %w", err)
+		}
+	}
+	var ctr [8]byte
+	binary.BigEndian.PutUint64(ctr[:], uint64(time.Now().Unix()/30))
+	mac := hmac.New(sha1.New, key)
+	mac.Write(ctr[:])
+	sum := mac.Sum(nil)
+	off := sum[len(sum)-1] & 0x0f
+	code := (uint32(sum[off]&0x7f) << 24) | (uint32(sum[off+1]) << 16) |
+		(uint32(sum[off+2]) << 8) | uint32(sum[off+3])
+	return fmt.Sprintf("%06d", code%1000000), nil
 }
 
 // authWire 是 DB 存储形态：TaskAuthConfig 的 json:"-" 面向 API，DB 必须显式
@@ -110,21 +144,38 @@ func (a *TaskAuthConfig) Normalize() error {
 	return nil
 }
 
-// PromptBlock 渲染成注入 worker system prompt 的文本块。中性描述、不打印
-// 密码明文——凭据以「字段清单 + 值」形式给出，worker 直接用它登录。
+// PromptBlock 渲染成注入 worker system prompt 的文本块。
+//
+// v0.4.68 安全修复：**不再输出密码与 TOTP 密钥的明文**。
+//
+// 旧实现一边在注释里写「不打印密码明文」，一边把 a.Password 与 a.TOTPSecret
+// 原样拼进 system prompt。而 system prompt 会随 worker 的每一次 LLM 调用发给
+// 第三方模型厂商（OpenAI/Anthropic/自建中转），并落进 llm_records 与
+// transcripts/*.jsonl——凭据因此在三个地方各留一份明文。
+//
+// 现在只描述「登录接口长什么样」与「凭据已配置」，真实值由
+// session_login(use_task_auth=true) 在发请求时从内存取（含 TOTP 现算）。
 func (a *TaskAuthConfig) PromptBlock() string {
 	if a == nil || !a.Enabled {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("\n\n━━ 目标登录凭据（任务级配置）━━\n")
-	b.WriteString("目标站点已配置登录凭据，测试前先用它登录并在会话内保持认证状态；不要在报告里写出密码或 TOTP 密钥。\n")
+	b.WriteString("目标站点已配置登录凭据。**凭据值不在此处给出**——登录时调用：\n")
+	b.WriteString("  session_login(session=\"<会话名>\", url=\"" + a.LoginURL + "\", use_task_auth=true)\n")
+	b.WriteString("工具会从服务端配置里直接取用户名/密码，并按当前时间现算 TOTP 动态码；\n")
+	b.WriteString("登录成功后用同一 session 名调 http_request 复用登录态。\n")
+	b.WriteString("不要用 Bash/curl 手工拼登录请求（那样需要明文密码，平台不会提供）。\n")
 	b.WriteString("登录地址：" + a.LoginURL + "\n")
 	b.WriteString("请求方法：" + a.Method + "，请求体格式：" + a.ContentType + "\n")
-	b.WriteString("用户名字段：" + a.UsernameField + " = " + a.Username + "\n")
-	b.WriteString("密码字段：" + a.PasswordField + " = " + a.Password + "\n")
+	b.WriteString("用户名字段：" + a.UsernameField + "（值已配置）\n")
+	b.WriteString("密码字段：" + a.PasswordField + "（值已配置）\n")
 	if a.HasTOTP {
-		b.WriteString("TOTP 密钥（Base32）：" + a.TOTPSecret + "（按当前时间生成 6 位动态码填入动态码字段）\n")
+		field := a.TOTPField
+		if field == "" {
+			field = "totp"
+		}
+		b.WriteString("动态码字段：" + field + "（TOTP 密钥已配置，工具自动现算）\n")
 	}
 	if len(a.ExtraFields) > 0 {
 		keys := make([]string, 0, len(a.ExtraFields))
@@ -132,26 +183,10 @@ func (a *TaskAuthConfig) PromptBlock() string {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		b.WriteString("附加表单字段：")
-		for i, k := range keys {
-			if i > 0 {
-				b.WriteString("，")
-			}
-			b.WriteString(k + "=" + a.ExtraFields[k])
-		}
-		b.WriteString("\n")
+		b.WriteString("附加表单字段：" + strings.Join(keys, "，") + "（值已配置，工具自动填入）\n")
 	}
 	if len(a.Headers) > 0 {
-		b.WriteString("附加请求头：")
-		first := true
-		for k, v := range a.Headers {
-			if !first {
-				b.WriteString("，")
-			}
-			first = false
-			b.WriteString(k + ": " + v)
-		}
-		b.WriteString("\n")
+		b.WriteString("附加请求头已配置（工具自动带上）\n")
 	}
 	if a.SuccessStatus > 0 {
 		b.WriteString(fmt.Sprintf("成功判定：响应状态码 %d", a.SuccessStatus))

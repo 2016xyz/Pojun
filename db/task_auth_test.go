@@ -69,17 +69,30 @@ func TestTaskAuthSecretsNotSerialized(t *testing.T) {
 	}
 }
 
-// TestTaskAuthPromptBlock worker 需要明文密码才能登录，但块要有明确纪律：
-// 报告不得写出密码/TOTP。
+// TestTaskAuthPromptBlock 断言 prompt 块**不含**凭据明文。
+//
+// v0.4.68：旧测试要求块里必须出现密码 "s3cret" —— 那正是把凭据发给第三方
+// 模型厂商的通道。现在块只描述接口形态，真实值由
+// session_login(use_task_auth=true) 在发请求时从内存取。
 func TestTaskAuthPromptBlock(t *testing.T) {
 	a := &TaskAuthConfig{Enabled: true, LoginURL: "https://t/login", Method: "POST", ContentType: "json",
 		UsernameField: "user", PasswordField: "pass", Username: "alice", Password: "s3cret",
+		TOTPSecret: "JBSWY3DPEHPK3PXP", TOTPField: "otp",
 		SuccessStatus: 200, SuccessContains: "token"}
 	a.HasPassword = true
+	a.HasTOTP = true
 	block := a.PromptBlock()
-	for _, want := range []string{"https://t/login", "alice", "s3cret", "token", "不要在报告里写出密码"} {
+
+	// 结构性信息必须保留（worker 要知道怎么登录）。
+	for _, want := range []string{"https://t/login", "user", "pass", "otp", "use_task_auth"} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("prompt block missing %q:\n%s", want, block)
+		}
+	}
+	// 凭据明文一律不得出现。
+	for _, secret := range []string{"s3cret", "JBSWY3DPEHPK3PXP", "alice"} {
+		if strings.Contains(block, secret) {
+			t.Fatalf("prompt block 泄露了凭据 %q：\n%s", secret, block)
 		}
 	}
 	if (&TaskAuthConfig{}).PromptBlock() != "" {

@@ -110,8 +110,15 @@ func TestRuleTimeoutActionGovernsJudgeFailure(t *testing.T) {
 	}
 }
 
-// 规则级 timeout_action=allow 时，模型失败就放行。
-func TestRuleTimeoutActionAllowGovernsJudgeFailure(t *testing.T) {
+// 规则级 timeout_action=allow 不能把全局安全下限（ask）放松成静默放行。
+//
+// v0.4.68 安全修复：旧行为是无条件 cfg.FailAction = rt.Action，于是内置规则
+// 一律写的 timeoutAction=allow 把全局的「模型失败→转人工」盖成了放行——
+// rm -rf / 、DROP DATABASE、数据外泄管道只要模型超时就自动授权。
+//
+// 新语义：deny/ask 可以收紧（更严格总是允许），allow 只有在全局本来就是
+// allow 时才生效。所以模型失败时这里应当得到 ask（全局值），不是 allow。
+func TestRuleTimeoutActionAllowCannotRelaxGlobalFloor(t *testing.T) {
 	ic := New(nil)
 	ic.SetReviewer(func(ctx context.Context, profileID int64, prompt string, input ReviewInput) (Decision, error) {
 		return Decision{}, context.DeadlineExceeded
@@ -123,8 +130,11 @@ func TestRuleTimeoutActionAllowGovernsJudgeFailure(t *testing.T) {
 	if !ok {
 		t.Fatal("模型失败时仍应按失败策略给出动作")
 	}
-	if dec.Action != "allow" {
-		t.Fatalf("规则级 timeout_action=allow 未生效：裁决动作=%q want allow", dec.Action)
+	if dec.Action == "allow" {
+		t.Fatalf("规则级 timeout_action=allow 放松了全局安全下限：裁决动作=%q，应为 ask（全局 defaultJudgeFailAction）", dec.Action)
+	}
+	if dec.Action != "ask" {
+		t.Fatalf("裁决动作=%q，应为 ask（全局 defaultJudgeFailAction）", dec.Action)
 	}
 }
 

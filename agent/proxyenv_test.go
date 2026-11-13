@@ -6,8 +6,28 @@ import (
 )
 
 func TestProxyEnvEmptyIsNil(t *testing.T) {
-	if env := proxyEnv("", ""); env != nil {
-		t.Fatalf("proxyEnv(\"\", \"\") = %v, want nil (direct)", env)
+	// v0.4.68 安全修复：空代理时不再返回 nil。
+	// 必须返回「敏感变量清空项」，否则子进程通过 os.Environ() 继承
+	// POJUN_PG_DSN / API key —— agent 一条 `env` 就拿到数据库口令。
+	env := proxyEnv("", "")
+	if env == nil {
+		t.Fatal("proxyEnv(\"\", \"\") = nil；空代理时也必须返回敏感变量清空项")
+	}
+	got := map[string]bool{}
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok && v == "" {
+			got[k] = true
+		}
+	}
+	for _, key := range sensitiveEnvKeys {
+		if !got[key] {
+			t.Errorf("敏感变量 %q 未被清空；env=%v", key, env)
+		}
+	}
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "HTTP_PROXY=") && !strings.HasSuffix(kv, "=") {
+			t.Errorf("空代理时不应注入 HTTP_PROXY：%q", kv)
+		}
 	}
 }
 

@@ -55,8 +55,11 @@ func TestJudgeDefaultsAreHumanAbsentFriendly(t *testing.T) {
 	if defaultJudgeFailAction != "ask" {
 		t.Errorf("裁决失败策略=%q，应为 ask（模型挂了不能静默放行）", defaultJudgeFailAction)
 	}
-	if defaultJudgeAskTimeoutAction != "allow" {
-		t.Errorf("人工审批超时策略=%q，应为 allow（人不在时不卡死）", defaultJudgeAskTimeoutAction)
+	// v0.4.68：人工审批超时改为 deny。
+	// 旧断言要求 allow（「人不在时不卡死」），但那等于「没人确认 = 自动同意」。
+	// ask 类规则（启停回连接收器）本就该由人拍板，无人应答时安全默认是拒绝。
+	if defaultJudgeAskTimeoutAction != "deny" {
+		t.Errorf("人工审批超时策略=%q，应为 deny（无人确认不能自动放行）", defaultJudgeAskTimeoutAction)
 	}
 	if defaultJudgeAskTimeoutSecs < 120 {
 		t.Errorf("人工审批超时 %ds 太短，操作员来不及回来看", defaultJudgeAskTimeoutSecs)

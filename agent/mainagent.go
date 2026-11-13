@@ -10,6 +10,7 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
 	"github.com/chu0119/pojun/db"
+	"github.com/chu0119/pojun/guard"
 	"github.com/chu0119/pojun/hosttools"
 	"github.com/chu0119/pojun/intercept"
 )
@@ -20,6 +21,9 @@ import (
 // autonomous intent-generation loop (that is the planner's job).
 type MainAgent struct {
 	findingRecorder FindingRecorder
+	// guard 是平台安全边界（拦截规则 / 审批 / 审计）。nil = 未接线（仅旁路日志）。
+	// mainagent 与 worker/chat 一样持有 Bash/Write/Edit，必须挂 guard。
+	guard *guard.Guard
 	// 授权边界守卫开关（v0.4.63）：装配时从设置读取，传到 ToolSet。
 	scopeGuard           bool
 	scopeInheritWrites   bool
@@ -66,6 +70,11 @@ func (m *MainAgent) maxTokens() int {
 func NewMainAgent(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int) *MainAgent {
 	return &MainAgent{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns}
 }
+
+// SetGuard wires the platform safety boundary (intercept rules / approval /
+// audit). nil = not wired (log-only). Server-side assembly calls this alongside
+// SetScopeFlags.
+func (m *MainAgent) SetGuard(g *guard.Guard) { m.guard = g }
 
 func (m *MainAgent) SetScopeFlags(scopeGuard, scopeInheritWrites, crossTaskNotifyDedup bool) {
 	m.scopeGuard = scopeGuard
@@ -193,8 +202,13 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		Settlement:   wrapupSettlement("mainagent", nil),
 		NonStreaming: m.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
 		MaxTokens:    m.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
-		// 工具调用可观测：与 planner 同理，此前 journal 里看不到 mainagent 的动作。
-		Hooks: toolLogSink(KindMain),
+		// 工具调用可观测 + 安全边界：日志层套在拦截链外侧，纯旁路不干预。
+		// mainagent 同样持有 Bash/Write/Edit，必须挂 guard（v0.4.68 修复）。
+	}
+	if m.guard != nil {
+		opts.Hooks = wrapToolLog(m.guard.Hooks(), KindMain, "")
+	} else {
+		opts.Hooks = toolLogSink(KindMain)
 	}
 	if m.tx != nil { // persist raw human↔AI conversation; one accumulating file per segment
 		opts.Transcript = m.tx

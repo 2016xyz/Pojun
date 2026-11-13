@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -362,15 +363,24 @@ func proxyEnv(proxy string) []string {
 }
 
 // runGitHub 从 GitHub Release 取单文件二进制并装到 /usr/local/bin。
+//
+// v0.4.68 安全修复：此前只检查 HTTP 200 就把内容解压装进 /usr/local/bin
+// （root 权限）——GitHub 账号被盗 / 中间人篡改 / 上游被投毒，任一情况都等于
+// 拿到 root 执行权。现在强制校验 GitHub API 返回的 asset digest（sha256），
+// 拿不到 digest 就**拒绝安装**（fail-closed），不再静默装一个未校验的二进制。
+//
+// 注意与 UpgradeSelf 的区别：那条路径走 selfupdate.FetchVerifiedZip，本来
+// 就校验 SHA256SUMS；这条是「装第三方工具」，此前完全没有校验。
 func (s *Server) runGitHub(ctx context.Context, j *Job, tool hosttools.Tool, proxy string) (int, error) {
 	client := httpClient(proxy)
 
 	j.append(fmt.Sprintf("[*] 解析 %s 最新版本…\n", tool.Repo))
-	tag, err := latestTag(ctx, client, GitHubAPITagURL(tool))
+	tag, digests, err := fetchReleaseDigests(ctx, client, GitHubAPITagURL(tool))
 	if err != nil {
 		return 1, fmt.Errorf("解析最新版本失败(可配置安装代理后重试): %w", err)
 	}
 	u := GitHubAssetURL(tool, tag)
+	assetName := assetNameFromURL(u)
 	j.append(fmt.Sprintf("[*] 下载 %s\n", u))
 
 	var blob []byte
@@ -403,12 +413,35 @@ func (s *Server) runGitHub(ctx context.Context, j *Job, tool hosttools.Tool, pro
 	if lastErr != nil {
 		return 1, fmt.Errorf("下载失败: %w", lastErr)
 	}
-	j.append(fmt.Sprintf("[*] 已下载 %.1f MB,解压…\n", float64(len(blob))/(1<<20)))
+
+	// 校验：必须拿到该资产的 digest，且内容必须匹配。
+	want := strings.TrimPrefix(strings.ToLower(digests[assetName]), "sha256:")
+	if want == "" {
+		return 1, fmt.Errorf("%s 的 Release 未提供 %s 的内容摘要（digest），"+
+			"拒绝在 root 权限下安装未经校验的二进制", tool.Repo, assetName)
+	}
+	sum := sha256.Sum256(blob)
+	got := hex.EncodeToString(sum[:])
+	if got != want {
+		return 1, fmt.Errorf("SHA256 不匹配：期望 %s…，实际 %s…（下载损坏或被篡改）",
+			want[:12], got[:12])
+	}
+	j.append(fmt.Sprintf("[*] SHA256 校验通过（%s…），已下载 %.1f MB，解压…\n",
+		got[:12], float64(len(blob))/(1<<20)))
 
 	// 归档格式各家不一：ProjectDiscovery 系是 .zip，gitleaks/chisel/amass 是
 	// .tar.gz 或 .gz，feroxbuster 是 .tar.gz。按内容嗅探决定走哪条解压路径，
 	// 而不是靠资产名的后缀猜（后缀拼错就直接装不上）。
 	return installFromArchive(j, blob, tool)
+}
+
+// assetNameFromURL 取下载地址的最后一段，即 Release 资产名。
+// API 的 assets[].name 与下载 URL 的末段一致，用它把 URL 与 digest 对上。
+func assetNameFromURL(u string) string {
+	if i := strings.LastIndex(u, "/"); i >= 0 && i+1 < len(u) {
+		return u[i+1:]
+	}
+	return u
 }
 
 // installFromArchive 从归档里取出目标二进制装到 /usr/local/bin。
@@ -596,47 +629,82 @@ func httpClient(proxy string) *http.Client {
 	return c
 }
 
+// latestTag 解析最新 tag（双通道：GitHub API → releases/latest 的 302 Location）。
 func latestTag(ctx context.Context, client *http.Client, apiURL string) (string, error) {
-	// 通道 1：GitHub API。共享出口 IP 常被 403 限流（Kali 实测 5 个 PD 工具全挂在这）。
-	tag, apiErr := latestTagViaAPI(ctx, client, apiURL)
+	tag, _, err := fetchReleaseDigests(ctx, client, apiURL)
+	return tag, err
+}
+
+// fetchReleaseDigests 解析最新版本，并额外返回「资产名 → SHA256 digest」表。
+//
+// v0.4.68 安全修复背景：安装第三方工具时只检查 HTTP 200 就把内容解压进
+// /usr/local/bin（root 权限），等于「谁控制了上游 Release 就拿到 root」，
+// 中间人篡改同理。GitHub 自 2024 起在 Release API 的 assets[] 里提供 digest
+// 字段（形如 "sha256:9d84…"），由 GitHub 在存储层计算，是校验第三方二进制
+// 最省事也最可靠的一手凭据。
+//
+// 取数策略（兼顾弱网可用性）：
+//  1. 通道 1 走 GitHub API——一次拿到 tag + digest；
+//  2. API 被共享出口 IP 限流时（Kali 实测 5 个 PD 工具全挂在这），退到
+//     releases/latest 的 302 Location 拿 tag（不消耗配额），再按
+//     /releases/tags/<tag> 补查一次摘要；
+//  3. 仍拿不到摘要时返回空 map——由调用方 fail-closed 决定是否继续。
+func fetchReleaseDigests(ctx context.Context, client *http.Client, apiURL string) (string, map[string]string, error) {
+	// 通道 1：GitHub API。
+	tag, digests, apiErr := latestTagViaAPI(ctx, client, apiURL)
 	if apiErr == nil && tag != "" {
-		return tag, nil
+		return tag, digests, nil
 	}
 	// 通道 2：releases/latest 的 302 Location——浏览器同款路径，不消耗 API 配额。
 	// apiURL 形如 https://api.github.com/repos/<owner>/<repo>/releases/latest。
 	if repo, ok := strings.CutPrefix(apiURL, "https://api.github.com/repos/"); ok {
 		repo, _ = strings.CutSuffix(repo, "/releases/latest")
 		if repo != "" {
-			if tag, err := latestTagViaRedirect(ctx, client, "https://github.com/"+repo+"/releases/latest"); err == nil && tag != "" {
-				return tag, nil
+			if t, err := latestTagViaRedirect(ctx, client, "https://github.com/"+repo+"/releases/latest"); err == nil && t != "" {
+				// 按 tag 补查一次摘要（这一步仍可能被限流，失败就返回空 map）。
+				if _, d, e := latestTagViaAPI(ctx, client, "https://api.github.com/repos/"+repo+"/releases/tags/"+t); e == nil {
+					return t, d, nil
+				}
+				return t, nil, nil
 			}
 		}
 	}
-	return "", apiErr
+	return "", nil, apiErr
 }
 
-func latestTagViaAPI(ctx context.Context, client *http.Client, apiURL string) (string, error) {
+// latestTagViaAPI 走 GitHub Release API，同时返回 tag 与资产摘要表。
+func latestTagViaAPI(ctx context.Context, client *http.Client, apiURL string) (string, map[string]string, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "pojun-hostd")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API HTTP %d", resp.StatusCode)
+		return "", nil, fmt.Errorf("GitHub API HTTP %d", resp.StatusCode)
 	}
 	var payload struct {
 		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if payload.TagName == "" {
-		return "", fmt.Errorf("响应里没有 tag_name")
+		return "", nil, fmt.Errorf("响应里没有 tag_name")
 	}
-	return payload.TagName, nil
+	digests := make(map[string]string, len(payload.Assets))
+	for _, a := range payload.Assets {
+		if a.Name != "" && a.Digest != "" {
+			digests[a.Name] = a.Digest
+		}
+	}
+	return payload.TagName, digests, nil
 }
 
 // latestTagViaRedirect 不跟随重定向，从 Location 路径末尾取 tag。

@@ -165,6 +165,10 @@ var defaultEnabledTools = []string{
 	"listener_start", "listener_stop",
 	"goal_met",
 	"Write", "Edit", "MultiEdit",
+	// job_start 是「后台跑任意 shell 命令」，与 Bash 完全等价。此前不在集合里，
+	// 于是所有内置破坏性/外泄规则对它一律不匹配（worker 换条路就绕过了）。
+	// v0.4.68 补齐。
+	"job_start",
 }
 
 // New creates an Interceptor backed by d. The rule cache is lazy-loaded on
@@ -417,7 +421,12 @@ const (
 	defaultJudgeTimeoutSecs = 180
 	defaultJudgeFailAction       = "ask"
 	defaultJudgeAskTimeoutSecs   = 180
-	defaultJudgeAskTimeoutAction = "allow"
+	// 人工审批超时动作：deny。
+	//
+	// v0.4.68 安全修复：旧值是 allow —— 意味着「没人确认」在 180 秒后自动变成
+	// 「同意执行」。ask 类规则（启停回连接收器）本就该由人拍板；无人应答时的
+	// 安全默认是拒绝，宁可让任务失败，也不静默放行一个没人确认的动作。
+	defaultJudgeAskTimeoutAction = "deny"
 
 	// ask 全局兜底上限：6h（见 settingAskDefaultTimeoutSecs 注释）。
 	defaultAskTimeoutSecs = 6 * 60 * 60
@@ -604,9 +613,23 @@ func (i *Interceptor) judge(ctx context.Context, tool string, arguments json.Raw
 		if rt.Seconds > 0 {
 			cfg.TimeoutSeconds = rt.Seconds
 		}
+		// 规则级动作只能「收紧」全局下限，不能「放松」。
+		//
+		// v0.4.68 安全修复：旧实现无条件 cfg.FailAction = rt.Action，而内置规则
+		// 一律写 timeoutAction=allow —— 于是全局的「模型失败→转人工」(ask) 被规则
+		// 自己盖成了静默放行。后果是 rm -rf / 、DROP DATABASE、数据外泄管道这些
+		// judge 类规则只要模型在超时窗口内答不完（长命令/限流/额度耗尽）就自动授权。
+		//
+		// 现在的语义：deny/ask 可以覆盖（更严格总是允许的）；allow 只有在全局本来
+		// 就是 allow（管理员显式选择「失败即放行」）时才生效，否则沿用全局。
 		switch rt.Action {
-		case "allow", "deny", "ask":
+		case "deny", "ask":
 			cfg.FailAction = rt.Action
+		case "allow":
+			if cfg.FailAction == "allow" {
+				cfg.FailAction = "allow"
+			}
+			// 否则保留全局的 ask/deny——不允许规则绕过安全下限。
 		}
 	}
 	i.mu.RLock()

@@ -87,6 +87,10 @@ type ToolSet struct {
 	// 与 Bash 的 HTTP_PROXY 同源（记录 MITM 或全局代理），保证流量留痕一致。
 	egressProxy string
 	egressCA    string
+	// taskAuth 是任务级登录凭据（v0.4.68）。session_login 凭 use_task_auth=true
+	// 直接从这里取，凭据不再以明文进 system prompt——明文进 prompt 等于发给
+	// 第三方模型厂商，并落进 llm_records 与 transcript。
+	taskAuth *db.TaskAuthConfig
 	// lastScopeWarnings 是最近一次 record_fact 中 source/foreign 资产的提示，
 	// 只回传、不阻断写入。
 	lastScopeWarnings []string

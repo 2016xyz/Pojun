@@ -85,6 +85,10 @@ var localExecToolNames = map[string]bool{
 	"Edit":         true,
 	"MultiEdit":    true,
 	"NotebookEdit": true,
+	// job_start 等价于 Bash（后台跑任意 shell 命令）。此前只在 tools_jobs.go 的
+	// 注释里声称「已登记」，实际漏了——local_exec=false 的 agent 靠它照样能落命令。
+	// v0.4.68 补齐。
+	"job_start": true,
 }
 
 // DropLocalExecTools returns tools minus the local-execution ones, for agents whose

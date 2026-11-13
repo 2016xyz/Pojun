@@ -79,7 +79,12 @@ type Worker struct {
 	extraTools []actool.CoreTool
 	// taskAuthBlock 是任务级登录凭据的渲染块（v0.4.8，由 host 在装配时设置）。
 	// 非空则注入 system prompt：worker 先登录、再在会话内测试。
+	// v0.4.68：块内不再含明文密码/TOTP（见 TaskAuthConfig.PromptBlock），
+	// 结构化凭据改由 taskAuth 直接交给 session_login。
 	taskAuthBlock string
+	// taskAuth 是同一份凭据的结构化本体（v0.4.68）。session_login 用它实现
+	// use_task_auth=true，避免明文密码进 system prompt。
+	taskAuth *db.TaskAuthConfig
 	// injectConstraints resolves whether this task's operation constraints get
 	// injected into the worker system prompt. Read per run so the settings toggle
 	// takes effect without rebuilding the agent. nil = inject (default).
@@ -161,6 +166,10 @@ func (w *Worker) SetRunTimeout(run time.Duration) {
 // SetTaskAuthBlock 设置任务级登录凭据渲染块（host 装配时调用；空串=不注入）。
 func (w *Worker) SetTaskAuthBlock(block string) { w.taskAuthBlock = block }
 
+// SetTaskAuth 注入任务级登录凭据本体（v0.4.68）。ToolSet 持有的 session_login
+// 靠它实现 use_task_auth=true：凭据直接从内存取，不需要在 prompt 里以明文出现。
+func (w *Worker) SetTaskAuth(cfg *db.TaskAuthConfig) { w.taskAuth = cfg }
+
 // SetArtifactRecorder 注入证据附件存储（host 实现）。
 func (w *Worker) SetArtifactRecorder(r ArtifactRecorder) { w.artifactRecorder = r }
 
@@ -217,16 +226,47 @@ func (w *Worker) SetWebSearch(o WebSearchOpts) { w.webSearch = o }
 // honor the proxy vars. ALL_PROXY is set too so a socks5 egress proxy (which curl
 // only reads from ALL_PROXY, not HTTP(S)_PROXY) works in the capture-off path.
 // Empty proxyAddr → nil (direct, unchanged env).
+// sensitiveEnvKeys 是绝不能出现在 agent 子进程环境里的平台凭据。
+//
+// 背景（v0.4.68 安全修复）：SDK 的 withEnv() 以 os.Environ() 为底构造子进程环境，
+// 而 Pojun 主进程本身就读这些变量（config.go 读 POJUN_PG_DSN、provider.go 读各
+// 家 API key）。于是 agent 执行一条 `env` 就能拿到数据库完整连接串与上游 key，
+// 进而 psql 直连改掉 intercept 规则——比读 config.json 更短，连文件权限都不用绕。
+//
+// 修法：在 BashEnv（会作为 withEnv 的 extra 传入）里把这些 key 显式置空。
+// withEnv 的处理顺序是「base → 丢掉 extra 里出现的 key → 追加 extra」，所以
+// 传入 "KEY=" 既删掉了继承来的值，也不会让子进程看到原值。
+var sensitiveEnvKeys = []string{
+	"POJUN_PG_DSN",
+	"POJUN_LLM_BASE_URL",
+	"POJUN_LLM_PROXY",
+	"OPENAI_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"NVD_API_KEY",
+	"GITHUB_TOKEN",
+	"GH_TOKEN",
+	"AWS_ACCESS_KEY_ID",
+	"AWS_SECRET_ACCESS_KEY",
+	"AWS_SESSION_TOKEN",
+	"GOOGLE_APPLICATION_CREDENTIALS",
+	"AZURE_CLIENT_SECRET",
+}
+
 func proxyEnv(proxyAddr, caCert string) []string {
+	env := make([]string, 0, 16)
+	// 先无条件清空敏感凭据（即使不配代理也要清）。
+	for _, k := range sensitiveEnvKeys {
+		env = append(env, k+"=")
+	}
 	if proxyAddr == "" {
-		return nil
+		return env
 	}
-	env := []string{
-		"HTTP_PROXY=" + proxyAddr, "HTTPS_PROXY=" + proxyAddr,
-		"http_proxy=" + proxyAddr, "https_proxy=" + proxyAddr,
-		"ALL_PROXY=" + proxyAddr, "all_proxy=" + proxyAddr, // socks5 egress: curl reads only this
+	env = append(env,
+		"HTTP_PROXY="+proxyAddr, "HTTPS_PROXY="+proxyAddr,
+		"http_proxy="+proxyAddr, "https_proxy="+proxyAddr,
+		"ALL_PROXY="+proxyAddr, "all_proxy="+proxyAddr, // socks5 egress: curl reads only this
 		"NODE_USE_ENV_PROXY=1", // Node 24+: honor HTTP(S)_PROXY in built-in fetch/http
-	}
+	)
 	if caCert != "" {
 		env = append(env,
 			"SSL_CERT_FILE="+caCert,
@@ -481,6 +521,7 @@ func firstCancel(cs []func(error)) func(error) {
 
 func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.AssetStore, ts *db.ExplorationStore, intent *db.Node, hooks harness.HookRunner, emit func(db.Activity), enr EnrichTrigger, notifyFinding func(int64, string), requestID, message string, workCancel func(error)) (harness.TerminalReason, WriteCounts, error) {
 	tsx := NewToolSet(ts, name)
+	tsx.taskAuth = w.taskAuth // 任务级凭据：session_login(use_task_auth=true) 直接取用
 	tsx.SetScopeFlags(w.scopeGuard, w.scopeInheritWrites, w.crossTaskNotifyDedup)
 	tsx.SetFindingRecorder(w.findingRecorder)
 	tsx.SetTaskID(taskID)

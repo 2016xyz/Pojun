@@ -13,6 +13,7 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
 	"github.com/chu0119/pojun/db"
+	"github.com/chu0119/pojun/guard"
 	"github.com/chu0119/pojun/intercept"
 )
 
@@ -24,6 +25,10 @@ type Planner struct {
 	// intentQueue 返回 (派发阈值, worker 数)；nil = 不限制。
 	intentQueue func() (int, int)
 	findingRecorder FindingRecorder
+	// guard 是平台安全边界（拦截规则 / 审批 / 审计）。装配时由 server 侧注入；
+	// nil = 未接线（仅旁路日志，不做任何拦截）。v0.4.68 起与 worker/chat 对齐：
+	// planner 同样持有 Bash/Write/Edit，不挂 guard 等于整条审批链对它失效。
+	guard *guard.Guard
 	// 授权边界守卫开关（v0.4.63）：装配时从设置读取，传到 ToolSet。
 	scopeGuard           bool
 	scopeInheritWrites   bool
@@ -58,6 +63,11 @@ type Planner struct {
 func NewPlanner(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int) *Planner {
 	return &Planner{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, todos: map[int64]*actool.TodoStore{}}
 }
+
+// SetGuard wires the platform safety boundary (intercept rules / approval /
+// audit). nil = not wired (log-only, no interception). Server-side assembly
+// calls this alongside SetScopeFlags.
+func (p *Planner) SetGuard(g *guard.Guard) { p.guard = g }
 
 func (p *Planner) SetScopeFlags(scopeGuard, scopeInheritWrites, crossTaskNotifyDedup bool) {
 	p.scopeGuard = scopeGuard
@@ -538,9 +548,14 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		Settlement:   settle,
 		NonStreaming: p.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
 		MaxTokens:    p.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
-		// 工具调用可观测：planner 的工具调用此前完全不可观测（journal 里只有心跳），
-		// 无法从日志判断「planner 在干活」还是「planner 卡住不动」。纯旁路，不干预。
-		Hooks: toolLogSink(KindPlanner),
+	}
+	// 工具调用可观测 + 安全边界：日志层套在拦截链外侧（先转发后记，纯旁路不干预）。
+	// planner 与 worker/chat 一样持有 Bash/Write/Edit，必须挂 guard——否则内置拦截
+	// 规则、judge 研判、ask 人工审批、intercept 审计表对它全部失效（v0.4.68 修复）。
+	if p.guard != nil {
+		opts.Hooks = wrapToolLog(p.guard.Hooks(), KindPlanner, "")
+	} else {
+		opts.Hooks = toolLogSink(KindPlanner)
 	}
 	if p.tx != nil { // persist raw LLM conversation; one accumulating file per task's planner
 		opts.Transcript = p.tx

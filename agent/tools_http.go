@@ -648,10 +648,14 @@ func (t *ToolSet) sessionLogin() actool.CoreTool {
 				PassField    string `json:"pass_field"`
 				ExtraFields  string `json:"extra_fields"`
 				Header       string `json:"header"`
+				UseTaskAuth  bool   `json:"use_task_auth"`
 			}
 			_ = json.Unmarshal(in, &a)
-			if strings.TrimSpace(a.Session) == "" || strings.TrimSpace(a.URL) == "" {
-				return actool.Errorf("session 与 url 必填"), nil
+			if strings.TrimSpace(a.Session) == "" {
+				return actool.Errorf("session 必填"), nil
+			}
+			if strings.TrimSpace(a.URL) == "" && !a.UseTaskAuth {
+				return actool.Errorf("url 必填（use_task_auth=true 时可省略，用任务配置里的登录地址）"), nil
 			}
 			jarPath := t.sessionJarPath(a.Session)
 			if jarPath == "" {
@@ -659,6 +663,55 @@ func (t *ToolSet) sessionLogin() actool.CoreTool {
 			}
 			user, pass, token := strings.TrimSpace(a.Username), a.Password, strings.TrimSpace(a.Token)
 			authKindLabel := "explicit"
+			// v0.4.68：任务级凭据从此处直接取（use_task_auth=true）。
+			// 这样密码/TOTP 不必写进 system prompt——prompt 会随每次调用发给
+			// 第三方模型厂商，并落进 llm_records 与 transcript。
+			// 优先级低于显式参数、高于资产凭据之外的默认值。
+			if a.UseTaskAuth {
+				if t.taskAuth == nil || !t.taskAuth.Enabled {
+					return actool.Errorf("use_task_auth=true 但本任务没有启用登录凭据配置"), nil
+				}
+				user, pass = t.taskAuth.Username, t.taskAuth.Password
+				authKindLabel = "任务级凭据"
+				if strings.TrimSpace(a.URL) == "" {
+					a.URL = t.taskAuth.LoginURL
+				}
+				if a.UserField == "" {
+					a.UserField = t.taskAuth.UsernameField
+				}
+				if a.PassField == "" {
+					a.PassField = t.taskAuth.PasswordField
+				}
+				if a.Header == "" && len(t.taskAuth.Headers) > 0 {
+					var hs []string
+					for k, v := range t.taskAuth.Headers {
+						hs = append(hs, k+": "+v)
+					}
+					sort.Strings(hs)
+					a.Header = strings.Join(hs, "\n")
+				}
+				if a.ExtraFields == "" && len(t.taskAuth.ExtraFields) > 0 {
+					var fs []string
+					for k, v := range t.taskAuth.ExtraFields {
+						fs = append(fs, k+"="+v)
+					}
+					sort.Strings(fs)
+					a.ExtraFields = strings.Join(fs, "&")
+				}
+				// TOTP：按当前时间现算，密钥同样不落 prompt。
+				if strings.TrimSpace(t.taskAuth.TOTPSecret) != "" {
+					if code, err := t.taskAuth.TOTPCodeNow(); err == nil && code != "" {
+						field := t.taskAuth.TOTPField
+						if field == "" {
+							field = "totp"
+						}
+						if a.ExtraFields != "" {
+							a.ExtraFields += "&"
+						}
+						a.ExtraFields += field + "=" + code
+					}
+				}
+			}
 			if a.AssetID > 0 {
 				if t.as == nil {
 					return actool.Errorf("asset_id 需要 AssetStore（当前环境未启用）"), nil

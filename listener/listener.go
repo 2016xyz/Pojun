@@ -18,10 +18,31 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
+
+// BindAddrEnv 是监听器绑定地址的覆盖开关（v0.4.68）。
+//
+// 背景：回连接收器的默认行为原本是绑 `:port`，即 0.0.0.0——只要宿主机有公网
+// 网卡，一个 reverse shell 接收器就在无任何提示的情况下对全网开放了。而它
+// 接收的是**任意来源**的连接，任何人都能连上来占坑、也能顺着端口找到这台
+// 机器的暴露面。
+//
+// 现在默认绑 127.0.0.1（同机测试 / SSH 隧道 / C2 中转都够用），需要「目标从
+// 外部直接回连」时显式设 POJUN_LISTENER_BIND=0.0.0.0 或指定具体网卡地址。
+const BindAddrEnv = "POJUN_LISTENER_BIND"
+
+// bindAddr 返回本次监听使用的绑定地址。
+func bindAddr() string {
+	if v := strings.TrimSpace(os.Getenv(BindAddrEnv)); v != "" {
+		return v
+	}
+	return "127.0.0.1"
+}
 
 const (
 	// MaxCapturePerSession 是单个会话捕获的字节上限（防灌爆）。
@@ -136,9 +157,11 @@ func (m *Manager) Start(name string, port int) (*Listener, error) {
 		return nil, fmt.Errorf("监听器 %q 已存在", name)
 	}
 	// 不同监听器抢同一端口在 net.Listen 处自然失败，无需额外查重。
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	// 绑定地址见 bindAddr()：默认 127.0.0.1，对外回连需显式 POJUN_LISTENER_BIND。
+	addr := fmt.Sprintf("%s:%d", bindAddr(), port)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("绑定 :%d 失败: %w", port, err)
+		return nil, fmt.Errorf("绑定 %s 失败: %w", addr, err)
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	l := &Listener{Name: name, Port: port, StartedAt: time.Now(), ln: ln, ctx: ctx, stop: stop}

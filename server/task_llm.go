@@ -726,12 +726,18 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 		if id64, err := strconv.ParseInt(t.ID, 10, 64); err == nil {
 			if pgTask, err2 := s.m.PG().GetTask(id64); err2 == nil && pgTask != nil && pgTask.AuthConfig != nil && pgTask.AuthConfig.Enabled {
 				wk.SetTaskAuthBlock(pgTask.AuthConfig.PromptBlock())
+				// v0.4.68：结构化凭据交给工具层，session_login(use_task_auth=true)
+				// 直接取用——密码/TOTP 因此不必以明文进 system prompt。
+				wk.SetTaskAuth(pgTask.AuthConfig)
 			}
 		}
 	}
 	pl := agent.NewPlanner(plannerRuntime, "task-router", s.m.dir, tx, plannerRuntime.CompactionWindow(), s.agentMaxTurns("planner"))
 	pl.SetScopeFlags(scopeGuard, scopeInherit, notifyDedup)
 	pl.SetIntentQueueLimit(s.intentQueueBudget) // 派发节流（v0.4.68）：本轮新增上限
+	// 安全边界：planner 持有 Bash/Write/Edit，必须挂 guard，否则拦截规则/judge/
+	// ask 审批/审计表对它全部失效（v0.4.68 修复）。
+	pl.SetGuard(t.Guard)
 	pl.SetFindingRecorder(s.evidenceStore())
 	pl.SetCompactionWindowResolver(plannerRuntime.CompactionWindow)
 	pl.SetNonStreaming(plannerRuntime.nonStreaming)
@@ -769,6 +775,8 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	pl.SetCompactor(compactor)
 	main := agent.NewMainAgent(mainRuntime, "task-router", s.m.dir, tx, mainRuntime.CompactionWindow(), s.agentMaxTurns("mainagent"))
 	main.SetScopeFlags(scopeGuard, scopeInherit, notifyDedup)
+	// 安全边界：mainagent 同样持有 Bash/Write/Edit（v0.4.68 修复）。
+	main.SetGuard(t.Guard)
 	main.SetFindingRecorder(s.evidenceStore())
 	main.SetCompactionWindowResolver(mainRuntime.CompactionWindow)
 	main.SetNonStreaming(mainRuntime.nonStreaming)

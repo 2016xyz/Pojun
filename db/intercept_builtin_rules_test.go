@@ -138,10 +138,16 @@ func TestJudgeRulesDeclareTheirOwnTimeoutFallback(t *testing.T) {
 		if rule.timeoutSeconds <= 0 {
 			t.Errorf("研判类规则 %q 的 timeout_seconds 必须为正，实际 %d", rule.name, rule.timeoutSeconds)
 		}
+		// v0.4.68：研判类规则的超时兜底改为 ask（模型超时 → 转人工）。
+		// 旧断言只允许 allow/deny，而内置规则一律写 allow —— 等于把
+		// 「模型没答上来」翻译成「同意执行 rm -rf /」。现在 ask 是合规值：
+		// 转人工看一眼，人也不在时再按 defaultJudgeAskTimeoutAction(deny) 拒绝。
 		switch rule.timeoutAction {
-		case "allow", "deny":
+		case "ask", "deny":
+		case "allow":
+			t.Errorf("研判类规则 %q 的 timeout_action=allow——这是静默放行，v0.4.68 起不允许（实际 %q）", rule.name, rule.timeoutAction)
 		default:
-			t.Errorf("研判类规则 %q 的 timeout_action 必须是 allow 或 deny，实际 %q", rule.name, rule.timeoutAction)
+			t.Errorf("研判类规则 %q 的 timeout_action 必须是 ask 或 deny，实际 %q", rule.name, rule.timeoutAction)
 		}
 	}
 }

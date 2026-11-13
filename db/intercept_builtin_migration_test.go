@@ -91,8 +91,10 @@ func TestMigrationSetsTimeoutForJudgeRules(t *testing.T) {
 		if secs <= 0 {
 			t.Errorf("规则 %q 迁移后 timeout_seconds=%v，应为正数", r.name, secs)
 		}
-		if act != "allow" && act != "deny" {
-			t.Errorf("规则 %q 迁移后 timeout_action=%q，应为 allow 或 deny", r.name, act)
+		// v0.4.68：迁移后允许 ask（模型超时转人工）。allow 不再接受——
+		// 那是把「无人研判」当「同意执行」。
+		if act != "ask" && act != "deny" {
+			t.Errorf("规则 %q 迁移后 timeout_action=%q，应为 ask 或 deny", r.name, act)
 		}
 	}
 }

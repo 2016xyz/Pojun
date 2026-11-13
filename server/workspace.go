@@ -57,6 +57,11 @@ func (s *Server) wsProtected(abs string) bool {
 // wsResolve maps a user-supplied relative path to an absolute path INSIDE the work
 // dir. It returns ok=false if the path would escape the root. filepath.Clean on a
 // rooted copy collapses any ".." so nothing can climb above the root.
+//
+// v0.4.68 安全修复：Clean 只能挡住字面量 ".."，挡不住**符号链接**。工作区里
+// 若存在 data/tasks/1/uploads/link → /etc/shadow（agent 的 Write/Bash 完全
+// 造得出来），GET /api/workspace/read?path=.../link 就会把 /etc/shadow 读出来。
+// 现在多一道 EvalSymlinks 解析，最终落点必须仍在工作区内。
 func (s *Server) wsResolve(rel string) (string, bool) {
 	base := filepath.Clean(s.m.dir)
 	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")

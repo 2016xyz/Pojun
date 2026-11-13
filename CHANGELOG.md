@@ -4,6 +4,86 @@
 
 ## [Unreleased]
 
+## [0.4.71] - 2026-11-13
+
+> 安全加固：修复第三方审计发现的 9 类缺陷——审批链漏掉两个角色、平台凭据经环境
+> 变量泄露给 agent、研判规则失败即放行、数据外泄正则与实际语法不符、安装脚本
+> 换行注入、root 助手安装未校验、符号链接逃逸、监听面默认全网开放。
+
+### 修复
+
+- **planner / mainagent 补挂安全边界**（严重）：两者都持有 `Bash`/`Write`/`Edit`，
+  但钩子链只挂了 `toolLogSink`（纯旁路日志），于是内置拦截规则、judge 研判、
+  `ask` 人工审批、`intercept_pending` 审计表对它们**全部失效**——一次成功的提示
+  注入即可在无审批、无留痕的情况下执行任意命令。现改为与 worker/chat 一致的
+  `wrapToolLog(guard.Hooks(), …)`，装配点补 `SetGuard(t.Guard)`。
+  连带修复：`goal_met` 落在 planner 工具集里，「收官研判」规则此前对它无效。
+- **agent 子进程不再继承平台凭据**（严重）：SDK 的 `withEnv()` 以 `os.Environ()`
+  为底构造子进程环境，而主进程读 `POJUN_PG_DSN` 与各家 API key，因此 agent 一条
+  `env` 就能拿到数据库完整连接串，进而 `psql` 直连删掉自己的拦截规则。`proxyEnv()`
+  现在无条件把 13 个敏感变量置空（借助 `withEnv` 的「先丢弃同名 key、再追加 extra」
+  语义）。
+- **研判类规则失败不再放行**（高）：全局安全默认是「模型失败→转人工（ask）」，
+  但内置规则一律声明 `timeoutAction=allow`，而规则级配置**无条件覆盖**全局默认，
+  于是 `rm -rf /`、`DROP DATABASE`、数据外泄管道只要模型在 90s 内答不完就自动
+  授权。现改为：规则级只能**收紧**（deny/ask 可覆盖，allow 仅当全局本来就是 allow
+  时生效），内置规则的超时动作统一改为 `ask`；`defaultJudgeAskTimeoutAction`
+  由 `allow` 改为 `deny`（无人确认的审批在 180s 后拒绝，而非自动同意）。
+- **「数据外泄管道」规则按真实语法重写**（高）：旧正则把「选项名」与「`@` 文件
+  前缀」耦合，导致自己注释里声称覆盖的形态中，真实可用的三条全部漏过——
+  `wget --post-file=FILE`（wget 正确语法不带 `@`）、`curl -T FILE`、
+  `curl --upload-file FILE`。另补 `curl -d "$(cat FILE)"` 命令替换与
+  `nc host port < FILE` 重定向两种等价的静默外泄。保留原有的「不误伤
+  `curl 目标 | nc 自己的监听器`」语义。
+- **`job_start` 纳入审批与执行面管控**（高）：它与 `Bash` 完全等价（后台跑任意
+  shell），但既不在 `defaultEnabledTools`（拦截规则永不评估），也不在
+  `localExecToolNames`（`local_exec=false` 的 agent 靠它照样落命令）——而源码注释
+  声称「已登记」。两处均已补齐。
+- **install.sh 代理参数拒绝换行注入**（高）：`normalize_proxy` 原先只 `tr -d ' \t"'`，
+  不过滤 CR/LF，而该值直接 `printf` 进 root 拥有的 systemd unit 的 `Environment=`
+  行，于是 `--install-proxy='http://h:7897\nEnvironment=LD_PRELOAD=/tmp/x.so'`
+  能在 unit 里生成第二条指令。现在先剔除 `\r\n`、拒绝其余控制字符，并让调用方
+  显式接住失败状态（赋值语句会吞掉 command substitution 的退出码）。
+- **hostd 安装第三方工具强制校验摘要**（高）：`runGitHub` 此前只检查 HTTP 200 就把
+  内容解压装进 `/usr/local/bin`（root 权限）。现强制比对 GitHub Release API 返回的
+  `assets[].digest`（sha256），拿不到摘要即 **fail-closed 拒绝安装**。
+  注：`UpgradeSelf` 走的是 `selfupdate.FetchVerifiedZip`，本来就校验 SHA256SUMS，
+  不受影响。
+- **hostd 自我升级拒绝降级**（中）：原先只校验 tag 形态，不看相对当前版本的
+  高低，pojun 组权限的进程可把 root 助手换装到任意历史版本（含已知漏洞版本）。
+  现与主程序更新接口一致，`CompareVersions < 0` 直接拒绝。
+- **工作区文件管理器拒绝符号链接逃逸**（中）：`wsResolve` 的 `filepath.Clean`
+  只能折叠字面量 `..`，挡不住 symlink。agent 可在工作区造 `link → /etc/shadow`，
+  随后 `/api/workspace/read` 即可读出宿主任意文件。新增 `wsWithinRoot()` 用
+  `EvalSymlinks` 解析真实落点（目标不存在时上溯最近已存在祖先，覆盖「向链接目录
+  新建文件」这条任意写路径）。
+- **监听面默认收敛到本机**：回连接收器由 `net.Listen("tcp", ":port")`（0.0.0.0）
+  改为默认 `127.0.0.1`，对外回连需显式 `POJUN_LISTENER_BIND=0.0.0.0`；
+  裸跑二进制的 `-addr` 默认值由 `:8787` 改为 `127.0.0.1:8787`
+  （`install.sh` 部署仍显式传 `-addr :8787`，不影响远程访问）。
+- **任务级登录凭据不再以明文进 system prompt**（高）：`PromptBlock()` 的注释写着
+  「不打印密码明文」，实现却把 `Password`/`TOTPSecret` 原样拼进 system prompt——
+  而 system prompt 会随每次 LLM 调用发给第三方模型厂商，并落进 `llm_records` 与
+  `transcripts/*.jsonl`。现在块内只描述登录接口形态，真实凭据由新参数
+  `session_login(use_task_auth=true)` 在发请求时从内存取，TOTP 按 RFC 6238 现算。
+
+### 验证
+
+- `go build ./...` 通过（go1.26.3）。
+- 403 个单元测试通过（agent / db / intercept / hostd / listener / guard /
+  notify / selfupdate / traffic / evidence / config / report / selfupdate 等）。
+- `server` 包的 finding/notify 集成测试需要 PostgreSQL（`POJUN_PG_DSN`），
+  在无数据库环境下失败；已用 `git worktree` 在**未修改的 v0.4.67** 上复跑同一批
+  用例，失败原因完全相同，确认与本次改动无关。
+- 新增回归测试：`TestWorkspaceRejectsSymlinkEscape`、
+  `TestWorkspaceAllowsNormalPaths`、`TestExfilRuleMatchesRealWorldCommands`、
+  `TestExfilRuleDoesNotFlagNormalCommands`、`TestBindAddrDefaultsToLoopback`、
+  `TestStartBindsLoopbackByDefault`、`TestProxyEnvAlwaysScrubsSensitiveKeys`、
+  `TestRuleTimeoutActionAllowCannotRelaxGlobalFloor`、`TestTaskAuthPromptBlock`
+  （改为断言**不含**明文）。
+- `install.sh` 换行注入实测：旧版 `cat -A` 输出两行（注入成功），新版输出单行；
+  正常代理（http / socks5h / 裸 host:port）全部照常通过，无回归。
+
 ## [0.4.70] - 2026-11-13
 
 > 安装器弱网韧性：apt 逐包兜底 + catalog 预装三轮重试（修 git 缺失导致 script 类安装全面失败）。
