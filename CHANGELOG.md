@@ -36,6 +36,22 @@
   「来源声明」与 `go.mod` 注释里写明这一取舍。
 - **CHANGELOG 历史条目的技术事实**：历史版本描述不改写。
 
+### 构建
+
+- **Docker 镜像可在中国大陆网络下完整构建**（v0.4.72）：原 Dockerfile 只支持
+  官方源（deb.debian.org / NodeSource / pypi.org / GitHub Releases），大陆网络下
+  apt 与 npm 尚可用镜像绕开，但 `nuclei` 与 `docker/install-tools.sh` 的全部资产
+  托管在 GitHub Releases，构建必然卡死。本次新增四个构建参数：
+  - `NODE_TARBALL_URL`：用镜像上的官方 tarball 装 Node，**跳过 NodeSource**
+    （实测 25MB tarball 1.2s 下完，比 NodeSource 快两个数量级）；
+  - `PLAYWRIGHT_DOWNLOAD_HOST`：chromium 走镜像 CDN；
+  - `SKIP_GITHUB_TOOLS`：跳过 nuclei 与 ProjectDiscovery 全家桶（唯一依赖
+    github.com 的两层），镜像仍是完整平台，工具可运行期用 hostd 补装；
+  - `SKIP_PLAYWRIGHT_BROWSER`：只装 MCP/CLI、不预置 chromium（省 ~170MB）。
+  同时补上 npm registry 参数与 `PATH` 修正（tarball 安装时 npm 全局 bin 落在
+  `/usr/local/lib/nodejs/bin`，不进 PATH 会导致 `playwright-cli` 找不到）。
+  README 新增「方式五：本地构建 Docker 镜像」，附完整命令与参数表。
+
 ### 注意
 
 - 本仓库的一键安装与自动更新读取的是**本仓库自己的 Release 产物**。在
@@ -54,6 +70,12 @@
 - `go build ./...` 通过；`agent` / `db` / `intercept` / `hostd` / `listener` /
   `selfupdate` 等包单元测试全绿。
 - 全仓残留检查：非 Norma 的 `chu0119` 引用 = 0；`2016xyz/Norma` 误改 = 0。
+- **Docker 镜像实测**（本机构建 + 跑通）：`pojun:0.4.72` 2.54GB，amd64；
+  起 PostgreSQL 后容器日志显示 `POJUN v0.4.72 backend listening on :8787`，
+  `/api/health` 返回 `{"ok":true,"status":"ok"}`，内嵌前端首页 200（21KB）、
+  `_next/static` 资源 200；镜像内 python3/node20/nmap/sqlmap/ffuf/hydra/jq/git/
+  libreoffice/rg/uv/playwright-cli 全部可用，`pojun-hostd v0.4.72` 自报版本正确；
+  安全修复已编入（二进制内含 `use_task_auth`、`job_start` 与 PromptBlock 脱敏文案）。
 
 ## [0.4.71] - 2026-11-13
 

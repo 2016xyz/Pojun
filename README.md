@@ -471,6 +471,7 @@ Homebrew + launchd，与 Linux 同款体验；下面的手动方式适合不想�
   「一键装齐」按钮不可用，其余功能完整）；
 - `masscan`/`nmap -sS` 等特权扫描需要 root/sudo，与 Linux 同理。
 
+
 ### 方式四：从源码编译
 
 ```bash
@@ -482,6 +483,61 @@ CGO_ENABLED=0 go build -o pojun-hostd ./cmd/pojun-hostd   # 可选：特权安�
 # 交叉编译其他平台示例（macOS Apple Silicon）：
 # CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags embedui -o pojun-darwin-arm64 ./cmd/pojun
 ```
+
+### 方式五：本地构建 Docker 镜像
+
+镜像采用「运行镜像」模式：**不在镜像里编译**，需要先准备好前端产物与两个二进制，
+`Dockerfile` 只负责装系统依赖与工具链。
+
+```bash
+# 1) 前端静态导出
+cd web
+npm install --registry=https://registry.npmmirror.com --include=dev
+NEXT_EXPORT=1 npx next build          # 产物在 web/out
+cd ..
+rsync -a --delete web/out/ server/webui/dist/
+
+# 2) 编译二进制（主程序带 embedui，前端已内嵌）
+mkdir -p dist/amd64
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags embedui -trimpath \
+  -ldflags "-s -w -buildid= -X main.version=v0.4.72" -o dist/amd64/pojun ./cmd/pojun
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+  -ldflags "-s -w -buildid= -X main.version=v0.4.72" -o dist/amd64/pojun-hostd ./cmd/pojun-hostd
+
+# 3) 构建镜像（中国大陆网络：全部走国内镜像源，约 5 分钟）
+docker build \
+  --build-arg TARGETARCH=amd64 \
+  --build-arg DEBIAN_MIRROR=mirrors.aliyun.com \
+  --build-arg DEBIAN_SECURITY_MIRROR=mirrors.aliyun.com \
+  --build-arg NODE_TARBALL_URL=https://registry.npmmirror.com/-/binary/node/v20.18.1/node-v20.18.1-linux-x64.tar.xz \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+  --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+  --build-arg PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright \
+  --build-arg SKIP_GITHUB_TOOLS=1 \
+  -t pojun:0.4.72 -t pojun:latest .
+
+# 4) 起服务
+cp .env.example .env   # 改 POSTGRES_PASSWORD
+docker compose up -d   # 用 POJUN_IMAGE=pojun 指向本地镜像
+```
+
+**构建参数说明**（均可省略，省略即用官方源）：
+
+| 参数 | 作用 | 国内推荐值 |
+|---|---|---|
+| `DEBIAN_MIRROR` / `DEBIAN_SECURITY_MIRROR` | apt 源 | `mirrors.aliyun.com` |
+| `NODE_TARBALL_URL` | 用官方 tarball 装 Node，**跳过 NodeSource** | `https://registry.npmmirror.com/-/binary/node/v20.18.1/node-v20.18.1-linux-x64.tar.xz` |
+| `NPM_REGISTRY` | npm registry | `https://registry.npmmirror.com` |
+| `PIP_INDEX_URL` | pip 源 | `https://mirrors.aliyun.com/pypi/simple/` |
+| `PLAYWRIGHT_DOWNLOAD_HOST` | chromium 下载源 | `https://cdn.npmmirror.com/binaries/playwright` |
+| `SKIP_GITHUB_TOOLS` | 跳过 nuclei 与 ProjectDiscovery 全家桶 | 无法访问 github.com 时设 `1` |
+| `SKIP_PLAYWRIGHT_BROWSER` | 只装 MCP/CLI、不预置 chromium（省 ~170MB） | `1` |
+
+> **`SKIP_GITHUB_TOOLS=1` 的取舍**：`nuclei` 与 `docker/install-tools.sh` 的全部资产
+> 都托管在 GitHub Releases，是镜像里**唯一**依赖 github.com 的部分。跳过之后镜像
+> 仍是完整平台（Web UI、agent、原生 HTTP/Bash 工具、MCP、技能库、LibreOffice、
+> Playwright 都在），只是不含这些外部扫描器——可在「宿主环境」页用 hostd 逐个补装，
+> 或换一台能访问 GitHub 的机器/CI 构建完整版。
 
 ### 公网部署
 

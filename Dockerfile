@@ -21,6 +21,17 @@ ARG NODESOURCE_URL=https://deb.nodesource.com/setup_20.x
 # 注：NodeSource 没有官方镜像替换；受限网络可用 --build-arg NODESOURCE_URL=<可信镜像的 setup 脚本地址>
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+# npm registry（v0.4.72 新增）：国内/受限网络用
+#   --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+# 覆盖。Playwright 全局包与浏览器都从这里/其 CDN 取，直连 npmjs.org 常超时。
+ARG NODE_TARBALL_URL=
+# 例：--build-arg NODE_TARBALL_URL=https://registry.npmmirror.com/-/binary/node/v20.18.1/node-v20.18.1-linux-x64.tar.xz
+# 设置后跳过 NodeSource，直接用镜像的官方 tarball（中国大陆推荐）。
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
+# Playwright 浏览器下载源（默认官方 CDN；受限网络可指向镜像）
+ARG PLAYWRIGHT_DOWNLOAD_HOST=
+ENV PLAYWRIGHT_DOWNLOAD_HOST=${PLAYWRIGHT_DOWNLOAD_HOST}
 RUN if [ "$DEBIAN_MIRROR" != "deb.debian.org" ]; then \
       sed -i "s|deb.debian.org|$DEBIAN_MIRROR|g; s|security.debian.org|$DEBIAN_SECURITY_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
       sed -i "s|deb.debian.org|$DEBIAN_MIRROR|g; s|security.debian.org|$DEBIAN_SECURITY_MIRROR|g" /etc/apt/sources.list; \
@@ -31,20 +42,44 @@ RUN if [ "$DEBIAN_MIRROR" != "deb.debian.org" ]; then \
 # Node 从 NodeSource 装 20.x：bookworm 自带的 apt nodejs 是 18，Playwright 要求 >=20。
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-         ca-certificates ripgrep curl wget vim git jq unzip \
+         ca-certificates ripgrep curl wget vim git jq unzip xz-utils \
          dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
          imagemagick libreoffice-writer libreoffice-calc libreoffice-impress poppler-utils \
     && for pkg in masscan sqlmap hydra whatweb nikto ffuf john python3-impacket socat proxychains4; do \
          apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 \
          || echo "[warn] apt 包不可用，跳过: $pkg"; \
        done \
-    && curl -fsSL "$NODESOURCE_URL" | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    && if [ -n "$NODE_TARBALL_URL" ]; then \
+         # 官方 NodeSource 在中国大陆常不可达；改用镜像的官方 tarball 安装。
+         echo "[info] 从 tarball 安装 Node: $NODE_TARBALL_URL"; \
+         curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 "$NODE_TARBALL_URL" -o /tmp/node.tar.xz; \
+         mkdir -p /usr/local/lib/nodejs; \
+         tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs --strip-components=1; \
+         ln -sf /usr/local/lib/nodejs/bin/node /usr/local/bin/node; \
+         ln -sf /usr/local/lib/nodejs/bin/npm /usr/local/bin/npm; \
+         ln -sf /usr/local/lib/nodejs/bin/npx /usr/local/bin/npx; \
+         rm -f /tmp/node.tar.xz; \
+       else \
+         curl -fsSL "$NODESOURCE_URL" | bash -; \
+         apt-get install -y --no-install-recommends nodejs; \
+       fi \
+    && node -v && npm -v \
     && rm -rf /var/lib/apt/lists/*
+# tarball 安装时 npm 的全局 bin 落在 /usr/local/lib/nodejs/bin；必须进 PATH，
+# 否则后续 npm install -g 装的命令（playwright-cli 等）找不到。
+ENV PATH=/usr/local/lib/nodejs/bin:${PATH}
 # nuclei(漏洞模板扫描引擎,配合 /app/nuclei-templates 情报模板库):
 # 官方 release 单二进制按架构下载,模板树由 pojun 的 vulnintel 同步器维护
 # (git clone --depth 1 到 /app/nuclei-templates,每轮同步 git pull 更新)。
+#
+# v0.4.72：nuclei 与下方 install-tools.sh 的全部资产都托管在 GitHub Releases。
+# 在大陆等无法直连 github.com 的环境里构建会卡死，因此提供 SKIP_GITHUB_TOOLS=1
+# 跳过这两层——镜像仍可作为完整平台运行（Web UI / agent / 原生 HTTP 与 Bash
+# 工具 / MCP / 技能库都在），只是不含这些外部扫描器；运行期可在「宿主环境」页
+# 用 hostd 逐个安装，或改用能访问 GitHub 的构建机/CI。
+ARG SKIP_GITHUB_TOOLS=0
 RUN set -eux; \
+    if [ "$SKIP_GITHUB_TOOLS" = "1" ]; then echo "[info] SKIP_GITHUB_TOOLS=1：跳过 nuclei 安装"; exit 0; fi; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) nuclei_arch="linux_amd64" ;; \
@@ -66,9 +101,13 @@ RUN set -eux; \
 # @playwright/cli：提供 playwright-cli，装完顺带 --help 验证可执行。
 # 再装 playwright（提供浏览器管理），装完用 --with-deps 预置 chromium 及其系统依赖，
 # 这样容器内 MCP/CLI 首次启动即可用，不再联网下载浏览器。
+# v0.4.72：PLAYWRIGHT_DOWNLOAD_HOST 可指向镜像（如
+#   --build-arg PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright）
+# SKIP_PLAYWRIGHT_BROWSER=1 则只装 MCP/CLI 包、不预置 chromium（镜像小 ~170MB）。
+ARG SKIP_PLAYWRIGHT_BROWSER=0
 RUN npm install -g @playwright/mcp@latest @playwright/cli@latest playwright@latest \
     && playwright-cli --help \
-    && playwright install --with-deps chromium \
+    && if [ "$SKIP_PLAYWRIGHT_BROWSER" = "1" ]; then echo "[info] 跳过 chromium 预置"; else playwright install --with-deps chromium; fi \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # 预编译好的对应架构二进制（dist/amd64/pojun 或 dist/arm64/pojun）
@@ -93,7 +132,12 @@ COPY docker/install-tools.sh /tmp/install-tools.sh
 COPY mcp-servers/ /app/mcp-servers/
 # uv：MCP 预设「FOFA 资产测绘」用它拉起 Python stdio server
 RUN python3 -m pip install --no-cache-dir --quiet uv && uv --version
-RUN bash /tmp/install-tools.sh && rm -f /tmp/install-tools.sh
+RUN set -eux; \
+    if [ "$SKIP_GITHUB_TOOLS" = "1" ]; then \
+      echo "[info] SKIP_GITHUB_TOOLS=1：跳过 ProjectDiscovery 全家桶/SecLists 等外部工具预装"; \
+      rm -f /tmp/install-tools.sh; exit 0; \
+    fi; \
+    bash /tmp/install-tools.sh && rm -f /tmp/install-tools.sh
 # 注：catalog 全量 90 项的补齐**不在构建期做**（会把镜像再撑大 1–2GB、构建时间翻倍）。
 # 改为容器首次启动时后台预装（见 docker/docker-entrypoint.sh）：主服务不被阻塞，
 # 安装日志在 data/tools-preinstall.log，「宿主环境」页实时反映进度。
