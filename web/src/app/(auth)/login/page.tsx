@@ -12,7 +12,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogT
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import { auth } from "@/lib/auth";
+import { ADMIN_USER, auth } from "@/lib/auth";
 
 // 认证页防指纹约定（公网部署场景）：
 //   1. 文案与结构不出现产品名、不引用 /logo.png（图片哈希最容易被测绘）；
@@ -69,7 +69,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const { token } = await api.login("POJUN", password);
+      const { token } = await api.login(ADMIN_USER, password);
       auth.setToken(token);
       window.location.replace("/function/tasks");
     } catch (e) {
@@ -165,7 +165,7 @@ export default function LoginPage() {
               <Label htmlFor="username" className="text-muted-foreground text-xs">用户名</Label>
               <Input
                 id="username"
-                value="POJUN"
+                value={ADMIN_USER}
                 readOnly
                 className="border-border/60 bg-muted/50 font-mono text-muted-foreground"
               />

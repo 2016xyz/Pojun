@@ -23,7 +23,6 @@ const (
 	authPassKey    = "auth.password_hash"
 	jwtTTL         = 7 * 24 * time.Hour
 	keyChars       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
 	// 下限与 setup 页的前端校验一致——校验只放在前端等于没放，直接打 API 就能
 	// 绕过。上限是 bcrypt 的硬限制：超过 72 字节 GenerateFromPassword 会返回
 	// ErrPasswordTooLong，提前挡掉好过让用户收到一句含义不明的「密码加密失败」。
@@ -35,6 +34,22 @@ const (
 // 把"读不到"当成"没有设置"：authInit 曾因此在数据库报错时放行，让未认证请求覆盖
 // 掉已有的管理员密码。
 const errDataSourceUnavailable = "数据源暂时不可用，请稍后重试"
+
+// defaultAdminUsername 是控制台登录用户名（v0.4.73）。
+//
+// 此前是硬编码在 authLogin 里的 "POJUN"（并兼容旧名 "ARTEX"）。部署方常需要
+// 换掉这个明显带产品特征的默认值，硬编码意味着每次都得改代码、重建镜像。
+// 现在默认值集中在这里，且可用 POJUN_ADMIN_USER 环境变量覆盖——容器里加一条
+// environment 即可，不必重新构建。
+const defaultAdminUsername = "rooi"
+
+// adminUsername 返回当前生效的登录用户名。
+func adminUsername() string {
+	if v := strings.TrimSpace(os.Getenv("POJUN_ADMIN_USER")); v != "" {
+		return v
+	}
+	return defaultAdminUsername
+}
 
 // validatePassword 返回空串表示通过，否则返回可直接展示给用户的中文原因。
 func validatePassword(pw string) string {
@@ -233,10 +248,10 @@ func loginGuard(w http.ResponseWriter, r *http.Request, action string) bool {
 	return true
 }
 
-// signJWT issues a 7-day HS256 token for user POJUN.
+// signJWT issues a 7-day HS256 token for the configured admin user.
 func signJWT(key []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "POJUN",
+		Subject:   adminUsername(),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}).SignedString(key)
@@ -461,7 +476,9 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "请求格式错误")
 		return
 	}
-	if req.Username != "POJUN" && req.Username != "ARTEX" { // v0.4.19 改名：兼容旧用户名
+	// v0.4.73：用户名改为可配置（默认 rooi，POJUN_ADMIN_USER 可覆盖）。
+	// 不再兼容旧名 POJUN/ARTEX——改名若还能用旧名登录，等于白改。
+	if req.Username != adminUsername() {
 		writeErr(w, 401, "用户名或密码错误")
 		return
 	}

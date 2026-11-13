@@ -31,6 +31,9 @@ services:
       POJUN_PG_DSN: postgres://${POSTGRES_USER:-pojun}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pojun}?sslmode=disable
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # 控制台登录用户名（v0.4.73）。默认 rooi；改这里后重启即可生效，
+      # 不需要重建镜像。密码仍走首次访问设置 / 设置页修改。
+      POJUN_ADMIN_USER: ${POJUN_ADMIN_USER:-rooi}
       POJUN_LLM_PROVIDER: ${POJUN_LLM_PROVIDER:-}
       POJUN_LLM_MODEL: ${POJUN_LLM_MODEL:-}
       POJUN_LLM_BASE_URL: ${POJUN_LLM_BASE_URL:-}

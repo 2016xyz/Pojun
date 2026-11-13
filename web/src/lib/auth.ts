@@ -1,4 +1,8 @@
 const TOKEN_KEY = "pojun_token";
+
+// 控制台登录用户名（v0.4.73）。服务端默认 rooi，可用 POJUN_ADMIN_USER 覆盖；
+// 前端要在构建期对齐，用 NEXT_PUBLIC_ADMIN_USER 覆盖。
+export const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USER ?? "rooi";
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 天（秒）
 
 export interface CurrentUser {
@@ -37,7 +41,7 @@ export const auth = {
       if (parts.length !== 3) return null;
       // base64url → base64
       const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-      const username: string = payload.sub ?? "POJUN";
+      const username: string = payload.sub ?? ADMIN_USER;
       return { id: "1", name: username, username, email: "", avatar: "", role: "operator" };
     } catch {
       return null;

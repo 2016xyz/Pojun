@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+## [0.4.73] - 2026-11-13
+
+> 控制台登录用户名改为可配置，默认值由 `POJUN` 改为 `rooi`。
+
+### 变更
+
+- **登录用户名可配置**：此前用户名硬编码在 `authLogin` 里（`POJUN`，并兼容旧名
+  `ARTEX`）。部署方常需要换掉这个带产品特征的默认值，硬编码意味着每次都要改代码
+  重建镜像。现在默认值收敛为 `defaultAdminUsername = "rooi"`，并支持
+  `POJUN_ADMIN_USER` 环境变量覆盖（`docker-compose.yml` 与 `.env.example`
+  已接好，改 `.env` 重启即生效，无需重建镜像）。
+- **JWT 的 `sub` 声明**同步使用该用户名（`signJWT`），前端 `getCurrentUser`
+  从 `sub` 解析展示名，因此头像/名称会跟着变。
+- **不再兼容旧名** `POJUN` / `ARTEX`：改名若还能用旧名登录，等于没改。
+- 前端新增 `ADMIN_USER` 常量（`web/src/lib/auth.ts`，可用
+  `NEXT_PUBLIC_ADMIN_USER` 在构建期覆盖），登录页输入框与提交逻辑统一引用；
+  `useCurrentUser` 的兜底用户同步。
+
+### 验证
+
+- `go build ./...` 通过；`server` 包 auth 相关单测通过；`tsc --noEmit` 无错误。
+- 登录契约：`POST /api/auth/login {"username":"rooi","password":"..."}` → 200；
+  旧用户名 → 401。
+
 ## [0.4.72] - 2026-11-13
 
 > 品牌与链接迁移：全仓从上游 `chu0119` 命名空间迁到本 fork 的 `2016xyz`，
