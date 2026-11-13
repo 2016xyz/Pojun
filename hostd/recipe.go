@@ -16,7 +16,7 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/chu0119/pojun/hosttools"
+	"github.com/2016xyz/pojun/hosttools"
 )
 
 // PkgMgr 系统包管理器。

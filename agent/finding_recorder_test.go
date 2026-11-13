@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/evidence"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/evidence"
 )
 
 type failingFindingRecorder struct{}

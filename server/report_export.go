@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/report"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/report"
 )
 
 // exportExcludeStatuses 交付件默认剔除的分拣状态。

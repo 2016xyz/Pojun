@@ -3,8 +3,8 @@ package server
 import (
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/agent"
+	"github.com/2016xyz/pojun/db"
 )
 
 // 重试策略的服务端解析，见 docs/LLM重试设计.md。五层里：

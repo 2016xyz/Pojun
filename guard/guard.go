@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chu0119/pojun/intercept"
+	"github.com/2016xyz/pojun/intercept"
 	"github.com/Autumn-27/norma/hook"
 )
 

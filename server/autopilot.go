@@ -23,7 +23,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

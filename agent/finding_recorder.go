@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 )
 
 // validateFindingEvidence 高严重度证据门槛（v0.4.5，借鉴 Shannon 的 L3 门槛）：

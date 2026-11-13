@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/guard"
-	"github.com/chu0119/pojun/intercept"
-	"github.com/chu0119/pojun/llmrec"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/guard"
+	"github.com/2016xyz/pojun/intercept"
+	"github.com/2016xyz/pojun/llmrec"
 	"github.com/Autumn-27/norma/llm"
 )
 

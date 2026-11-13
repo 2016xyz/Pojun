@@ -1,4 +1,4 @@
-module github.com/chu0119/pojun
+module github.com/2016xyz/pojun
 
 go 1.26.3
 

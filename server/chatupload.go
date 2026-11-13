@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 )
 
 // maxChatUpload caps a single chat-attachment upload request (memory + spill).

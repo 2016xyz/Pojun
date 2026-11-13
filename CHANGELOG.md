@@ -4,6 +4,51 @@
 
 ## [Unreleased]
 
+## [0.4.72] - 2026-11-13
+
+> 品牌与链接迁移：全仓从上游 `chu0119` 命名空间迁到本 fork 的 `2016xyz`，
+> 201 个文件、353 处引用；同时清理上游交接文档里的真实基础设施信息。
+
+### 变更
+
+- **Go module 路径**：`github.com/chu0119/pojun` → `github.com/2016xyz/pojun`
+  （313 行 import 同步替换，`go build ./...` 与单元测试验证通过）。
+- **仓库与分发地址**：`install.sh` 的 `REPO`、`selfupdate.Repo`、README 徽章与
+  一键安装命令、Docker Compose 镜像名、`.env.example` 注释、CI 的 GHCR 路径，
+  统一改为 `2016xyz/Pojun` 与 `ghcr.io/2016xyz/pojun`
+  （`selfupdate.Repo` 仍是构建期变量，可用 `-ldflags -X` 覆盖）。
+- **文档品牌**：README 重写「来源声明」，明确本仓库是 fork、上游是谁、
+  以及本 fork 做了什么；`docs/*` 内的仓库链接同步迁移。
+
+### 清理
+
+- **上游基础设施信息占位化**：交接文档里原有的内网测试机地址、公网机 IP、
+  SSH 运维账号、Windows 本地工作区路径（共 19 处）替换为 `<kali-host>` /
+  `<test-host>` / `<public-host>` / `<maintainer>` / `<repo-workdir>` 等占位符。
+  方法论与验证步骤保留，具体标识不随 fork 公开。
+  （`192.168.1.1` 出现在 SSRF/DSL 教学示例中，属正常示例，保留。）
+
+### 保持
+
+- **norma SDK 依赖不变**：`go.mod` 的
+  `replace github.com/Autumn-27/norma => github.com/chu0119/Norma v0.4.4`
+  指向外部 SDK fork，不是本项目代码，改名会直接导致编译失败；已在 README
+  「来源声明」与 `go.mod` 注释里写明这一取舍。
+- **CHANGELOG 历史条目的技术事实**：历史版本描述不改写。
+
+### 注意
+
+- 本仓库的一键安装与自动更新读取的是**本仓库自己的 Release 产物**。在
+  `2016xyz/Pojun` 尚未发布 release 前，`curl .../releases/latest/download/install.sh`
+  会 404；容器镜像 `ghcr.io/2016xyz/pojun` 也需本仓库 CI 推送后才可拉取。
+  README「快速开始」已就此加显著提示，并提供源码安装路径。
+
+### 验证
+
+- `go build ./...` 通过；`agent` / `db` / `intercept` / `hostd` / `listener` /
+  `selfupdate` 等包单元测试全绿。
+- 全仓残留检查：非 Norma 的 `chu0119` 引用 = 0；`2016xyz/Norma` 误改 = 0。
+
 ## [0.4.71] - 2026-11-13
 
 > 安全加固：修复第三方审计发现的 9 类缺陷——审批链漏掉两个角色、平台凭据经环境
@@ -784,7 +829,7 @@
   收敛为 `linux/amd64` + `linux/arm64`；`build.sh --release` 默认目标同步收敛。
   Windows/macOS 暂不适配。
 - **README 安装章节重写**：主推一条命令
-  `curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash`
+  `curl -fsSL https://github.com/2016xyz/Pojun/releases/latest/download/install.sh | sudo bash`
   ——交互式选择部署形态（二进制/Docker）与可选出网代理，自动装依赖（PostgreSQL/
   LibreOffice/poppler/ImageMagick/字体）、建用户目录、初始化数据库、装 systemd 服务并
   启动；另列 `-y`/`--install-proxy`/`--mode=docker` 非交互姿势。预编译包说明改为
@@ -3253,16 +3298,16 @@ done 18 / exhausted 99 / blocked 82——**exhausted 是 done 的 5.5 倍**，�
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@neouks](https://github.com/neouks)
 
-[Unreleased]: https://github.com/chu0119/Pojun/compare/v0.3.10...HEAD
-[0.3.10]: https://github.com/chu0119/Pojun/compare/v0.3.9...v0.3.10
-[0.3.9]: https://github.com/chu0119/Pojun/compare/v0.3.8...v0.3.9
-[0.3.8]: https://github.com/chu0119/Pojun/compare/v0.3.7...v0.3.8
-[0.3.7]: https://github.com/chu0119/Pojun/compare/v0.3.6...v0.3.7
-[0.3.6]: https://github.com/chu0119/Pojun/compare/v0.3.5...v0.3.6
-[0.3.5]: https://github.com/chu0119/Pojun/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/chu0119/Pojun/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/chu0119/Pojun/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/chu0119/Pojun/compare/v0.3.1...v0.3.2
+[Unreleased]: https://github.com/2016xyz/Pojun/compare/v0.3.10...HEAD
+[0.3.10]: https://github.com/2016xyz/Pojun/compare/v0.3.9...v0.3.10
+[0.3.9]: https://github.com/2016xyz/Pojun/compare/v0.3.8...v0.3.9
+[0.3.8]: https://github.com/2016xyz/Pojun/compare/v0.3.7...v0.3.8
+[0.3.7]: https://github.com/2016xyz/Pojun/compare/v0.3.6...v0.3.7
+[0.3.6]: https://github.com/2016xyz/Pojun/compare/v0.3.5...v0.3.6
+[0.3.5]: https://github.com/2016xyz/Pojun/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/2016xyz/Pojun/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/2016xyz/Pojun/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/2016xyz/Pojun/compare/v0.3.1...v0.3.2
 
 ## 0.4.4 – 0.4.19 发版概要（2026-11-01 ~ 11-02）
 

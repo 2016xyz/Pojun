@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	actool "github.com/Autumn-27/norma/tool"
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/agent"
+	"github.com/2016xyz/pojun/db"
 )
 
 func names(tools []actool.CoreTool) map[string]actool.CoreTool {

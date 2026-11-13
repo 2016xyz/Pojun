@@ -6,9 +6,9 @@
 
 ## 1. 项目是什么
 
-**破军 Pojun**（`github.com/chu0119/Pojun`，2026-11-02 前名 ARTEX）是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，自动完成「目标拆解 → 侦察 → 漏洞挖掘 → 利用 → 后渗透 → 报告」全流程，人随时插手纠偏。
+**破军 Pojun**（`github.com/2016xyz/Pojun`，2026-11-02 前名 ARTEX）是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，自动完成「目标拆解 → 侦察 → 漏洞挖掘 → 利用 → 后渗透 → 报告」全流程，人随时插手纠偏。
 
-- **Go 单体后端**（`github.com/chu0119/pojun`，内嵌 Next.js 静态前端 `-tags embedui`）
+- **Go 单体后端**（`github.com/2016xyz/pojun`，内嵌 Next.js 静态前端 `-tags embedui`）
 - **PostgreSQL** 是唯一持久层（schema.sql 幂等迁移）
 - Agent 引擎基于 **norma SDK**（fork：`go.mod` replace 到 `github.com/chu0119/Norma`）
 - 定位：Linux 服务器常驻部署，仅用于授权渗透测试/SRC
@@ -20,13 +20,13 @@
 
 | 位置 | 内容 |
 |---|---|
-| `D:\xiangmu\aiai\ARTEX` | 主仓工作区（Windows，Git Bash） |
-| `github.com/chu0119/Pojun` | 主仓（PUBLIC，ghcr.io/chu0119/pojun 镜像随 tag 自动发布） |
-| `D:\xiangmu\ARTEX-SKILL` → `chu0119/pojun-skill` | 单技能可移植版（v2.0，与平台方法论同源，改动要双向同步） |
+| `<repo-workdir>` | 主仓工作区（Windows，Git Bash） |
+| `github.com/2016xyz/Pojun` | 主仓（PUBLIC，ghcr.io/2016xyz/pojun 镜像随 tag 自动发布） |
+| `<skill-workdir>` → `2016xyz/pojun-skill` | 单技能可移植版（v2.0，与平台方法论同源，改动要双向同步） |
 | `github.com/chu0119/Norma` | agent harness SDK fork（go.mod replace 指向它；改 SDK 要单独发版并 bump replace 版本） |
-| **Kali 测试机** `192.168.198.128` | 真实运行实例（SSH 用户 xingchuan，paramiko 直连；凭据见本地记忆）。服务：`systemctl {pojun,pojun-hostd}`，目录 `/opt/pojun`，DB 是 PostgreSQL 库 **`artex`**（历史残留名），实例以 `pojun` 用户运行 |
+| **Kali 测试机** `<kali-host>` | 真实运行实例（SSH 用户 <maintainer>，paramiko 直连；凭据见本地记忆）。服务：`systemctl {pojun,pojun-hostd}`，目录 `/opt/pojun`，DB 是 PostgreSQL 库 **`artex`**（历史残留名），实例以 `pojun` 用户运行 |
 | 本机 Docker | 测试 PG：容器 `pojun-audit-pg`（端口 15432，跑测试前 `docker start`） |
-| 公网机 120.55.171.237 | 半部署交接态（用户自管，v0.3.85+nginx），不要主动动 |
+| 公网机 <public-host> | 半部署交接态（用户自管，v0.3.85+nginx），不要主动动 |
 
 **测试数据库**：本机 `POJUN_PG_DSN='postgres://pojun:pojuntest@127.0.0.1:15432/pojun_ci?sslmode=disable'`；跑测试前 `docker exec pojun-audit-pg psql -U pojun -d postgres -c "DROP DATABASE IF EXISTS pojun_ci; CREATE DATABASE pojun_ci;"`（共享库残留数据会造成假失败）。
 

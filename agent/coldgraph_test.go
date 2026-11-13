@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 )
 
 // helper: intent/fact node

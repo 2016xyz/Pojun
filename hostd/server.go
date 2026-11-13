@@ -26,8 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chu0119/pojun/hosttools"
-	"github.com/chu0119/pojun/proxyprobe"
+	"github.com/2016xyz/pojun/hosttools"
+	"github.com/2016xyz/pojun/proxyprobe"
 )
 
 // State 任务状态。

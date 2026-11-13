@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/notify"
+	"github.com/2016xyz/pojun/notify"
 )
 
 var (

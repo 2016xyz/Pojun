@@ -9,8 +9,8 @@
 > 破军，北斗第七星，主杀伐、主变局。<br/>
 > 找到防线的破口，并把破口证明给你看。
 
-[![Release](https://img.shields.io/github/v/release/chu0119/Pojun?label=%E7%89%88%E6%9C%AC&color=red)](https://github.com/chu0119/Pojun/releases)
-[![CI](https://github.com/chu0119/Pojun/actions/workflows/ci.yml/badge.svg)](https://github.com/chu0119/Pojun/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/2016xyz/Pojun?label=%E7%89%88%E6%9C%AC&color=red)](https://github.com/2016xyz/Pojun/releases)
+[![CI](https://github.com/2016xyz/Pojun/actions/workflows/ci.yml/badge.svg)](https://github.com/2016xyz/Pojun/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 ![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Docker-lightgrey)
@@ -18,7 +18,7 @@
 
 **Go 单体后端** · **Next.js 内嵌前端** · **PostgreSQL** · **多 Agent 自主推进** · **全程证据留痕**
 
-📦 [一条命令安装](#快速开始) · 🧠 [单技能版 pojun-skill](https://github.com/chu0119/pojun-skill) —— 本平台方法论的单 skill 版，任意 AI Agent 即装即用
+📦 [一条命令安装](#快速开始) · 🧠 [单技能版 pojun-skill](https://github.com/2016xyz/pojun-skill) —— 本平台方法论的单 skill 版，任意 AI Agent 即装即用
 
 </div>
 
@@ -30,16 +30,23 @@
 > （Anthropic / OpenAI / 任意兼容网关，多通道轮询）。详细安装方式、系统选择、
 > 公网部署与升级 → [安装详解](#安装详解)。
 
+> [!IMPORTANT]
+> **本仓库是 `2016xyz` fork**，仓库地址已从上游 `chu0119/Pojun` 迁移过来。
+> 下方一键安装读取的是**本仓库的 GitHub Release 产物**（`install.sh` 与
+> `pojun-*.zip`）。若本仓库尚未发布 release，一键安装会 404——此时请用
+> 「源码安装」一节从源码构建，或先在本仓库打 tag 触发 Release workflow。
+> 同理，容器镜像名为 `ghcr.io/2016xyz/pojun`，需本仓库 CI 推送后才可拉取。
+
 **Linux（Debian / Ubuntu / RHEL / Kali 等，root 执行，全自动交互安装）：**
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/2016xyz/Pojun/releases/latest/download/install.sh | sudo bash
 ```
 
 **macOS 13+（Apple Silicon / Intel，一条命令，不需要 sudo）：**
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/2016xyz/Pojun/releases/latest/download/install.sh | bash
 ```
 
 自动完成：Homebrew 检测（没有就装）→ PostgreSQL 16 安装与服务化 → 下载并
@@ -50,7 +57,7 @@ curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh 
 **Windows / 已有 Docker（工具链全在镜像里，宿主机零安装）：**
 
 ```bash
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun && cd pojun
+git clone --depth 1 https://github.com/2016xyz/Pojun.git pojun && cd pojun
 cp .env.example .env    # Windows 用 copy；至少改 POSTGRES_PASSWORD
 # Windows（Docker Desktop，WSL2 后端）：
 docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
@@ -372,7 +379,7 @@ flowchart TB
 在**全新 Linux 服务器**（Debian/Ubuntu/CentOS/RHEL/Kali 等）上以 root 执行：
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/2016xyz/Pojun/releases/latest/download/install.sh | sudo bash
 ```
 
 脚本会交互式问你（直接回车用默认值）：
@@ -387,9 +394,9 @@ curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh 
 
 ```bash
 # 全默认（二进制、直连）
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash -s -- -y
+curl -fsSL https://github.com/2016xyz/Pojun/releases/latest/download/install.sh | sudo bash -s -- -y
 # 带代理 + 顺装常用渗透工具
-curl -fsSL .../install.sh | sudo bash -s -- --install-proxy=http://10.0.0.14:7897 --with-tools
+curl -fsSL .../install.sh | sudo bash -s -- --install-proxy=http://<proxy-host>:7897 --with-tools
 # Docker 形态
 curl -fsSL .../install.sh | sudo bash -s -- --mode=docker
 ```
@@ -402,7 +409,7 @@ curl -fsSL .../install.sh | sudo bash -s -- --mode=docker
 已经会用 Docker 的话，不需要 install.sh：
 
 ```bash
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun && cd pojun
+git clone --depth 1 https://github.com/2016xyz/Pojun.git pojun && cd pojun
 cp .env.example .env      # 至少改 POSTGRES_PASSWORD；POJUN_TAG 可钉到具体版本（如 v0.4.64）
 docker compose up -d      # → http://localhost:8787
 ```
@@ -410,7 +417,7 @@ docker compose up -d      # → http://localhost:8787
 **Windows（Docker Desktop，WSL2 后端）**：
 
 ```powershell
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun; cd pojun
+git clone --depth 1 https://github.com/2016xyz/Pojun.git pojun; cd pojun
 copy .env.example .env    # 至少改 POSTGRES_PASSWORD
 docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 # → http://localhost:8787
@@ -426,7 +433,7 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 - 其余与 Linux 相同：镜像内置全部渗透工具 / LibreOffice / Playwright，无需在
   Windows 宿主机安装任何工具链。建议 Docker Desktop 分配 ≥8G 内存。
 
-- 镜像 `ghcr.io/chu0119/pojun`，amd64/arm64 双架构，`POJUN_TAG` 默认 `latest`；
+- 镜像 `ghcr.io/2016xyz/pojun`，amd64/arm64 双架构，`POJUN_TAG` 默认 `latest`；
   渗透工具随镜像内置（与二进制 `--with-tools` 同一套）：nmap / masscan /
   sqlmap / hydra / whatweb / nikto / ffuf / john / impacket / socat /
   proxychains / nuclei / httpx / subfinder / naabu / dnsx / katana / tlsx /
@@ -439,7 +446,7 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 
 ### 方式三：下载预编译包（Linux / macOS，amd64 与 arm64）
 
-到 [Releases](https://github.com/chu0119/Pojun/releases) 下载对应平台包
+到 [Releases](https://github.com/2016xyz/Pojun/releases) 下载对应平台包
 `pojun-<版本>-<平台>-<架构>.zip`（附 SHA256SUMS），解压后：
 
 ```bash
@@ -633,16 +640,18 @@ docs/           设计文档 / 部署手册 / 能力对照
 
 ## 来源声明
 
-本项目最初 fork 自己删除的原作者项目
-[Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)（百度“Agent+”攻防挑战赛
+本项目 fork 自前维护者仓库 `chu0119/Pojun`（已迁移至本仓库 `2016xyz/Pojun`）。
+上游最初 fork 自已删除的原作者项目
+[Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)（百度"Agent+"攻防挑战赛
 冠军项目）的最终定版 v0.3.15，原作者代码保留在 git 历史里作为起点。
 
-- **保留**：双图架构、planner/worker 编排、MITM 流量代理、审批门框架、基础
-  工具集——原作者的架构设计是优秀的，git 历史向其致意；
-- **重建**：全部设计文档、CI 门禁、依赖解耦（norma SDK fork）、Docker 源；
-- **独立演进**：v0.3.16 以来 700+ 提交、约 5 万行新增由本仓库维护者完成，
-  覆盖情报运营 / 目标闸门 / 攻击链 / 执行面 / 去重合并 / 证据链 / 技能体系等
-  整条能力线，与原项目已无代码级关联。
+- **本 fork 的改动**：安全加固（审批链补全、凭据隔离、供应链校验）与品牌/下载
+  链接迁移到 `2016xyz` 命名空间；业务逻辑与上游保持一致，差异见 CHANGELOG；
+- **依赖说明**：agent 基建依赖 norma SDK，`go.mod` 的 `replace` 仍指向
+  `github.com/chu0119/Norma v0.4.4`（外部 SDK fork，非本项目代码，故不随改名迁移）；
+- **上游保留**：双图架构、planner/worker 编排、MITM 流量代理、审批门框架、基础
+  工具集——原作者与前维护者的架构设计是优秀的，git 历史向其致意；
+- **上游重建**：全部设计文档、CI 门禁、依赖解耦（norma SDK fork）、Docker 源。
 
 ## 许可与免责声明
 

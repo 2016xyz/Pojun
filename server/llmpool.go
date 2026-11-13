@@ -4,9 +4,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/llmpool"
+	"github.com/2016xyz/pojun/agent"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/llmpool"
 	"github.com/Autumn-27/norma/llm"
 )
 

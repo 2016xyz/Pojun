@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/2016xyz/pojun/db"
 
 	"github.com/miekg/dns"
 	"github.com/projectdiscovery/dnsx/libs/dnsx"

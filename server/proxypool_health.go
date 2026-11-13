@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/traffic"
+	"github.com/2016xyz/pojun/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

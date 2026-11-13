@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/selfupdate"
+	"github.com/2016xyz/pojun/selfupdate"
 )
 
 // releaseCache 是保护 GitHub 配额的那一层：未认证的 API 只有 60 次/小时/IP，

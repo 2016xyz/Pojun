@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	pgdb "github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
+	"github.com/2016xyz/pojun/agent"
+	pgdb "github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/traffic"
 )
 
 const taskArchivePollInterval = 2 * time.Second

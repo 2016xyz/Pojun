@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/docpreview"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/docpreview"
 )
 
 // 证据附件限额（v0.5.0）。默认"样本策略"：worker 只保存证明性样本，全量

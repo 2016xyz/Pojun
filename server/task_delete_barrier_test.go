@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
+	"github.com/2016xyz/pojun/agent"
 )
 
 func TestEngineDeleteBarrierRejectsNewTaskOperations(t *testing.T) {

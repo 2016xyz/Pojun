@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/notify"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/notify"
 )
 
 // 本文件是推送功能的 HTTP 接口。全部路由挂在 requireAuth 之后（见 Handler()），

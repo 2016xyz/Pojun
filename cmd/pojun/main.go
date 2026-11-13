@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/config"
-	"github.com/chu0119/pojun/selfupdate"
-	"github.com/chu0119/pojun/server"
+	"github.com/2016xyz/pojun/agent"
+	"github.com/2016xyz/pojun/config"
+	"github.com/2016xyz/pojun/selfupdate"
+	"github.com/2016xyz/pojun/server"
 )
 
 // version is the build version, injected at release time via

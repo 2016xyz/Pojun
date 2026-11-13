@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	pgdb "github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
+	pgdb "github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/traffic"
 	"golang.org/x/net/proxy"
 )
 

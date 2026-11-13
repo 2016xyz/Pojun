@@ -9,7 +9,7 @@ import (
 
 // 代理传输层失败时必须回退直连。
 //
-// 回归背景（2026-10-21 实测）：出网代理 10.10.70.14:7897 对
+// 回归背景（2026-10-21 实测）：出网代理 <proxy-host>:7897 对
 // api.github.com 正常（200），但对 www.cisa.gov / services.nvd.nist.gov
 // 会「CONNECT 返回 200、随后 TLS 握手 unexpected eof」——隧道建起来却不
 // 转发数据。同一轮同步里 GitHub 源成功、NVD/KEV 源全挂，而直连这两个源
@@ -143,7 +143,7 @@ func TestFallbackDirectIgnoresEnvProxy(t *testing.T) {
 	t.Setenv("http_proxy", "http://10.255.255.1:1")
 	t.Setenv("https_proxy", "http://10.255.255.1:1")
 
-	tr, err := newFallbackTransport("http://10.10.70.14:7897")
+	tr, err := newFallbackTransport("http://<proxy-host>:7897")
 	if err != nil {
 		t.Fatal(err)
 	}

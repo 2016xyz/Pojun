@@ -12,9 +12,9 @@ import (
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/guard"
-	"github.com/chu0119/pojun/intercept"
+	"github.com/2016xyz/pojun/db"
+	"github.com/2016xyz/pojun/guard"
+	"github.com/2016xyz/pojun/intercept"
 )
 
 // Planner is the event-driven LLM planner (docs §4.3): each time the asset or
